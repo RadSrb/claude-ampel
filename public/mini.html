@@ -102,9 +102,9 @@
          Anteil zeigt, wie voll der Kontext ist, bevor verdichtet wird. */
       .ring { flex: none; display: block; }
       .ring .spur { stroke: rgba(255, 255, 255, 0.16); }
-      .ring .fuell { stroke: var(--green); transition: stroke-dasharray 0.4s; }
-      .ring.warnung .fuell { stroke: var(--yellow); }
-      .ring.kritisch .fuell { stroke: var(--red); }
+      /* Die Farbe kommt als Attribut aus ringFarbe() -- hier bewusst KEIN
+         stroke setzen: eine CSS-Regel wuerde das Attribut ueberstimmen. */
+      .ring .fuell { transition: stroke-dasharray 0.4s, stroke 0.4s; }
 
       /* Warnzeichen, wenn ein Projekt mehr als einen Dev-Server laufen hat. */
       .zuviel { color: var(--yellow); font-size: 11px; flex: none; }
@@ -200,20 +200,33 @@
       }
 
       // Kontext-Ring. Radius 5 bei 14 px Kantenlaenge, Umfang 2*pi*5 = 31.4.
+      /**
+       * Farbe des Kontext-Rings. Bis 50 % gruen. Danach ein durchgehender
+       * Verlauf: bei 50 % Orange, das mit steigender Fuellung dunkler und
+       * roter wird, bis es bei 100 % fast Rot ist.
+       */
+      function ringFarbe(prozent) {
+        if (prozent < 50) return '#2ecc71';
+        const t = Math.min(1, (prozent - 50) / 50);
+        const ton = 38 - 34 * t; // Orange (38°) -> Rot (4°)
+        const helligkeit = 55 - 17 * t; // wird zunehmend dunkler
+        return `hsl(${ton.toFixed(1)}, 88%, ${helligkeit.toFixed(1)}%)`;
+      }
+
       function ring(kontext, verdichtet, groesse = 14) {
         if (!kontext) return '';
         const r = groesse / 2 - 2;
         const umfang = 2 * Math.PI * r;
         const gefuellt = (Math.min(100, kontext.prozent) / 100) * umfang;
-        const klasse = kontext.prozent >= 90 ? 'kritisch' : kontext.prozent >= 70 ? 'warnung' : '';
         const tsd = Math.round(kontext.tokens / 1000);
         const fenstertsd = Math.round(kontext.fenster / 1000);
         const woher = { einstellung: 'laut settings.json', gemessen: 'gemessen', env: 'per Umgebungsvariable', standard: 'Standardfenster' }[kontext.fensterQuelle] ?? '';
         const titel = `Kontext ${kontext.prozent}% · ${tsd}k von ${fenstertsd}k Tokens${woher ? ' (' + woher + ')' : ''}${kontext.modell ? ' · ' + kontext.modell : ''}${verdichtet ? ' · schon verdichtet' : ''}`;
-        return `<svg class="ring ${klasse}" width="${groesse}" height="${groesse}" viewBox="0 0 ${groesse} ${groesse}"><title>${titel}</title>
+        return `<svg class="ring" width="${groesse}" height="${groesse}" viewBox="0 0 ${groesse} ${groesse}"><title>${titel}</title>
           <circle class="spur" cx="${groesse / 2}" cy="${groesse / 2}" r="${r}" fill="none" stroke-width="2.5"/>
           <circle class="fuell" cx="${groesse / 2}" cy="${groesse / 2}" r="${r}" fill="none" stroke-width="2.5"
-            stroke-linecap="round" stroke-dasharray="${gefuellt.toFixed(2)} ${umfang.toFixed(2)}"
+            stroke-linecap="round" stroke="${ringFarbe(kontext.prozent)}"
+            stroke-dasharray="${gefuellt.toFixed(2)} ${umfang.toFixed(2)}"
             transform="rotate(-90 ${groesse / 2} ${groesse / 2})"/>
         </svg>`;
       }
