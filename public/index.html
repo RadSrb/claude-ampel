@@ -261,6 +261,7 @@
 
     <script>
       const LABEL = {
+        limit: 'Limit erreicht',
         attention: 'braucht dich',
         question: 'fragt dich',
         stalled: 'steht',
@@ -292,8 +293,9 @@
         // Nur eine echte Rueckfrage verdient den auffaelligen Kasten. Ein
         // Werkzeugname ist Beiwerk und gehoert in die Fusszeile -- der letzte
         // Text von Claude ist fast immer das Nuetzlichere.
-        const note = s.status === 'attention' && s.note ? `<div class="note alert">${esc(s.note)}</div>` : '';
-        const werkzeug = s.status !== 'attention' && s.note ? `<span class="tool">${esc(s.note)}</span>` : '';
+        const dringend = s.status === 'attention' || s.status === 'limit';
+        const note = dringend && s.note ? `<div class="note alert">${esc(s.note)}</div>` : '';
+        const werkzeug = !dringend && s.note ? `<span class="tool">${esc(s.note)}</span>` : '';
         const letzter = s.lastText ? `<div class="last">${esc(s.lastText)}</div>` : '';
         const gemeldet = s.source === 'hook' ? '' : ' <span title="Aus der Transkriptdatei abgeleitet, nicht per Hook gemeldet">≈</span>';
 
