@@ -12,6 +12,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { overlaySucher } from './lib/overlay.js';
+import { electronPfad, umgebungOhneNodeModus } from './lib/electron.js';
 import { neustartEntscheidung } from './lib/watchdog-regel.js';
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
@@ -87,6 +89,12 @@ function starte() {
   });
 
   notiere(`--- Server gestartet, PID ${kind.pid} ---`);
+
+  // Erst nach drei Sekunden: ein Waechter, der wegen belegtem Ports gleich
+  // wieder aussteigt, soll kein Overlay anfassen.
+  setTimeout(() => {
+    if (kind && kind.exitCode === null) aufsichtStarten();
+  }, 3000).unref();
   mitschreiben(kind.stdout, ' ');
   mitschreiben(kind.stderr, '!');
 
@@ -113,6 +121,7 @@ function starte() {
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     beendet = true;
+    if (overlayKind && overlayKind.exitCode === null) overlayKind.kill();
     notiere('--- Waechter wird beendet ---');
     if (kind) kind.kill();
     setTimeout(() => process.exit(0), 500);
@@ -142,5 +151,65 @@ process.on('exit', (code) => {
   // Fehlt diese Zeile im Log, war es kein Fehler im Waechter selbst.
   sofort(`--- Waechter endet, Code ${code} ---`);
 });
+
+// --- Overlay am Leben halten ---------------------------------------------
+//
+// Bisher startete die VBS bei jeder Wiederholung der Aufgabe ein komplettes
+// Electron, das die Einzelinstanz-Sperre nach vier Sekunden wieder beendete:
+// alle zwei Minuten sechs Prozesse fuer nichts. Jetzt sorgt der Waechter
+// dafuer -- und ein abgestuerztes Overlay ist in Sekunden zurueck statt erst
+// beim naechsten Takt der Aufgabenplanung.
+
+const overlaySuche = overlaySucher(HIER, 5000);
+let overlayKind = null;
+let fremdeOverlayPid = null;
+let aufsichtLaeuft = false;
+
+/** Billiger Existenztest -- 0,01 ms statt eines PowerShell-Starts. */
+function lebt(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return Boolean(err) && err.code === "EPERM";
+  }
+}
+
+async function overlaySichern() {
+  if (overlayKind && overlayKind.exitCode === null) return;
+  if (lebt(fremdeOverlayPid)) return;
+
+  // Erst nachsehen, ob schon eins laeuft -- sonst startet der Waechter ein
+  // zweites, das die Sperre sofort beendet, und versucht es endlos wieder.
+  const gefunden = await overlaySuche();
+  if (gefunden) {
+    if (fremdeOverlayPid !== gefunden.pid) notiere(`Overlay laeuft bereits, PID ${gefunden.pid}`);
+    fremdeOverlayPid = gefunden.pid;
+    return;
+  }
+  fremdeOverlayPid = null;
+
+  const electron = electronPfad(HIER);
+  if (!electron) return notiere("! Electron nicht gefunden -- Overlay bleibt aus");
+
+  overlayKind = spawn(electron, [path.join("overlay", "main.cjs")], {
+    cwd: HIER,
+    windowsHide: true,
+    stdio: "ignore",
+    env: umgebungOhneNodeModus(),
+  });
+  notiere(`Overlay gestartet, PID ${overlayKind.pid}`);
+  overlayKind.on("error", (err) => notiere(`! Overlay-Start fehlgeschlagen: ${err.message}`));
+}
+
+/** Startet die Aufsicht, sobald der Server sich als der echte erwiesen hat. */
+function aufsichtStarten() {
+  if (aufsichtLaeuft) return;
+  aufsichtLaeuft = true;
+  const takt = () => overlaySichern().catch((err) => notiere(`! Overlay-Aufsicht: ${err.message}`));
+  takt();
+  setInterval(takt, 10000).unref();
+}
 
 starte();
