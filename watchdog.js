@@ -6,6 +6,7 @@
 //
 //   node watchdog.js
 
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -31,6 +32,9 @@ try {
 }
 
 const log = fs.createWriteStream(LOGDATEI, { flags: 'a' });
+// Ein Fehler auf dem Log-Stream wuerde als unbehandeltes "error"-Ereignis
+// den ganzen Waechter beenden -- ausgerechnet den, der alles am Leben haelt.
+log.on('error', () => {});
 
 function zeitstempel() {
   const d = new Date();
@@ -49,7 +53,11 @@ function notiere(text) {
 `;
   log.write(zeile);
   // Beim Start ueber die VBS geht stdout ins Leere -- schadet nicht.
-  process.stdout.write(zeile);
+  try {
+    process.stdout.write(zeile);
+  } catch {
+    // Keine Konsole (Start ueber die VBS) -- das Log genuegt.
+  }
 }
 
 /** Haengt an jede Zeile des Servers die Uhrzeit. */
@@ -110,5 +118,29 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     setTimeout(() => process.exit(0), 500);
   });
 }
+
+function sofort(text) {
+  try {
+    fs.appendFileSync(LOGDATEI, `${zeitstempel()}  ${text}${os.EOL}`);
+  } catch {
+    // Wenn nicht einmal mehr das geht, ist ohnehin Schluss.
+  }
+}
+
+// Zweimal sind Waechter und Server spurlos verschwunden: das Log endete mit
+// einem sauberen Start und dann Stille. Ohne diese Handler kann der Waechter
+// seinen eigenen Tod nicht melden -- genau das soll hier aufhoeren.
+for (const art of ['uncaughtException', 'unhandledRejection']) {
+  process.on(art, (fehler) => {
+    sofort(`!!! ${art}: ${fehler instanceof Error ? fehler.stack : fehler}`);
+    process.exit(1);
+  });
+}
+
+process.on('exit', (code) => {
+  // Faellt bei einem harten Abschuss von aussen (TerminateProcess) NICHT an.
+  // Fehlt diese Zeile im Log, war es kein Fehler im Waechter selbst.
+  sofort(`--- Waechter endet, Code ${code} ---`);
+});
 
 starte();
