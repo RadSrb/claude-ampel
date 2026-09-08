@@ -199,7 +199,18 @@
       }
       .meta b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-      .ports { display: flex; gap: 6px; flex-wrap: wrap; }
+      .ports { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+      /* Pro Projekt sollte genau ein Dev-Server laufen. Mehrere sind fast immer
+         Leichen aus frueheren Sitzungen, die einen falschen Build ausliefern. */
+      .zuviel {
+        background: rgba(245, 165, 36, 0.16);
+        border: 1px solid rgba(245, 165, 36, 0.45);
+        color: var(--yellow);
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-size: 12px;
+        font-weight: 550;
+      }
       a.port {
         background: var(--panel-hi);
         border: 1px solid var(--line);
@@ -361,9 +372,15 @@
             const alleine = g.sessions.length === 1;
             const abgeleitet = g.sessions.every((s) => s.source !== 'hook');
             const klassen = ['card', g.color, abgeleitet ? 'derived' : 'hook'].join(' ');
-            const ports = (g.ports ?? [])
-              .map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">localhost:${p}</a>`)
-              .join('');
+            const portListe = g.ports ?? [];
+            const warnung =
+              portListe.length > 1
+                ? `<span class="zuviel" title="Pro Projekt sollte genau ein Dev-Server laufen. Die übrigen sind meist Leichen aus früheren Sitzungen und liefern einen veralteten Build aus.">⚠ ${portListe.length} Server</span>`
+                : '';
+            const ports =
+              portListe
+                .map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">localhost:${p}</a>`)
+                .join('') + warnung;
             const zustandOben = alleine
               ? `<span class="state ${g.color}">${LABEL[g.status]}${g.sessions[0].source === 'hook' ? '' : ' ≈'}</span>`
               : `<span class="anzahl">${g.sessions.length} Sessions</span>`;

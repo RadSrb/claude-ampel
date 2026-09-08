@@ -106,6 +106,23 @@
       .ring.warnung .fuell { stroke: var(--yellow); }
       .ring.kritisch .fuell { stroke: var(--red); }
 
+      /* Warnzeichen, wenn ein Projekt mehr als einen Dev-Server laufen hat. */
+      .zuviel { color: var(--yellow); font-size: 11px; flex: none; }
+
+      /* Anklickbarer Port -- oeffnet die Seite im richtigen Browser, nicht in
+         diesem 240 Pixel schmalen Fenster (siehe setWindowOpenHandler). */
+      a.port {
+        flex: none;
+        color: #9ad0ff;
+        background: rgba(154, 208, 255, 0.1);
+        border-radius: 5px;
+        padding: 1px 6px;
+        font-size: 10.5px;
+        text-decoration: none;
+        font-variant-numeric: tabular-nums;
+      }
+      a.port:hover { background: rgba(154, 208, 255, 0.24); color: #cfe8ff; }
+
       .anzahl {
         font-size: 10px;
         color: var(--muted);
@@ -262,10 +279,23 @@
             // wegen der man ueberhaupt hinschaut.
             const ziel = g.sessions[0];
             const mehr = g.sessions.length > 1 ? `<span class="anzahl">${g.sessions.length}</span>` : '';
+            const portListe = g.ports ?? [];
+            const portWarnung =
+              portListe.length > 1
+                ? `<span class="zuviel" title="${portListe.length} Dev-Server in diesem Projekt: ${portListe.join(', ')} — es sollte genau einer sein">⚠</span>`
+                : '';
+            // Der niedrigste Port ist bei Next, Vite & Co. der echte Dev-Server;
+            // die hoeheren sind Hilfsprozesse oder Leichen.
+            const portLink = portListe.length
+              ? `<a class="port" href="http://localhost:${portListe[0]}" target="_blank" rel="noopener"
+                   title="http://localhost:${portListe[0]} im Browser öffnen">:${portListe[0]}</a>`
+              : '';
             return `<div class="zeile ${g.color === 'red' ? 'rot' : ''}" data-session="${esc(ziel.sessionId)}"
                       title="${esc(g.cwd ?? '')}${ziel.title ? ' — ' + esc(ziel.title) : ''}">
               <i class="dot ${g.color}"></i>
               <span class="name">${esc(g.folder ?? '?')}</span>
+              ${portLink}
+              ${portWarnung}
               ${ring(ziel.kontext, ziel.verdichtet)}
               ${mehr}
               <span class="zeit" data-since="${g.since}">${dauer(now - g.since)}</span>
@@ -282,6 +312,9 @@
       }, 1000);
 
       liste.addEventListener('click', (ev) => {
+        // Ein Klick auf den Port oeffnet die Seite -- er darf nicht zusaetzlich
+        // das VS-Code-Fenster nach vorn holen.
+        if (ev.target.closest('a')) return;
         const zeile = ev.target.closest('.zeile');
         if (!zeile) return;
         fetch('/api/focus', {
