@@ -11,7 +11,7 @@ basis = fso.GetParentFolderName(WScript.ScriptFullName)
 sh.CurrentDirectory = basis
 
 ' Fensterstil 0 = unsichtbar, False = nicht auf das Ende warten.
-sh.Run "cmd /c node server.js", 0, False
+sh.Run "cmd /c node watchdog.js", 0, False
 WScript.Sleep 3000
 
 ' VS Code setzt ELECTRON_RUN_AS_NODE=1; bleibt das stehen, oeffnet Electron

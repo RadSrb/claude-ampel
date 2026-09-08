@@ -5,10 +5,11 @@
   "type": "module",
   "description": "Ampel-Dashboard fuer alle offenen Claude-Code-Sessions",
   "scripts": {
-    "start": "node server.js",
+    "start": "node watchdog.js",
     "test": "node --test test/*.test.js",
     "overlay": "electron overlay/main.cjs",
-    "tunnel": "node tunnel.js"
+    "tunnel": "node tunnel.js",
+    "server": "node server.js"
   },
   "dependencies": {
     "electron": "^44.2.0",

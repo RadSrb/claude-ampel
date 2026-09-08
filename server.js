@@ -19,6 +19,7 @@ import { groupByProject } from './lib/grouping.js';
 import { nutzung } from './lib/usage.js';
 import { loadOrCreateSecrets, tokenGleich } from './lib/secrets.js';
 import { PushDienst } from './lib/push.js';
+import { CODE_PORT_BELEGT } from './lib/watchdog-regel.js';
 import { FELDER, oeffentlich, pruefen, sichern, brauchtNeustart } from './lib/settings.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -457,10 +458,22 @@ server.listen(CONFIG.port, '127.0.0.1', () => {
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`Port ${CONFIG.port} ist belegt. Anderen Port in config.json eintragen.`);
-    process.exit(1);
+    // Eigener Code: watchdog.js darf hier NICHT neu starten, sonst dreht er sich im Kreis.
+    process.exit(CODE_PORT_BELEGT);
   }
   throw err;
 });
+
+// Ein Absturz soll wenigstens eine Spur hinterlassen. Danach beenden wir
+// bewusst: der Zustand nach einer unbehandelten Ausnahme ist nicht mehr
+// vertrauenswuerdig, und watchdog.js startet sauber neu.
+for (const art of ['uncaughtException', 'unhandledRejection']) {
+  process.on(art, (fehler) => {
+    console.error(`${art}:`, fehler instanceof Error ? fehler.stack : fehler);
+    if (overlayLaeuft()) overlayProzess.kill();
+    process.exit(1);
+  });
+}
 
 tick();
 setInterval(tick, CONFIG.scanIntervalMs);
