@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e1116" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <title>Claude-Ampel</title>
+    <style>
+      :root {
+        --bg: #0e1116;
+        --panel: #171b22;
+        --panel-hi: #1e232c;
+        --line: #2a313c;
+        --text: #e7ecf3;
+        --muted: #8c97a8;
+        --red: #f2453d;
+        --yellow: #f5a524;
+        --green: #2ecc71;
+        --grey: #6b7686;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+        padding: 20px 22px 60px;
+      }
+
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 18px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        font-size: 20px;
+        margin: 0;
+        letter-spacing: 0.2px;
+      }
+
+      .counts { display: flex; gap: 14px; font-size: 22px; font-weight: 600; }
+      .count { display: flex; align-items: center; gap: 7px; }
+      .count small { font-size: 13px; font-weight: 400; color: var(--muted); }
+      .dot { width: 13px; height: 13px; border-radius: 50%; display: inline-block; }
+      .dot.red { background: var(--red); }
+      .dot.yellow { background: var(--yellow); }
+      .dot.green { background: var(--green); }
+      .dot.grey { background: var(--grey); }
+
+      .conn { margin-left: auto; font-size: 13px; color: var(--muted); }
+      .conn.down { color: var(--red); }
+
+      /* Nutzungslimit im Kopf -- kompakt, damit es die Zaehler nicht verdraengt. */
+      .limit { display: flex; gap: 14px; align-items: center; font-size: 12.5px; color: var(--muted); }
+      .limit .topf { display: flex; align-items: center; gap: 6px; }
+      .limit .spur { display: inline-block; width: 62px; height: 5px; border-radius: 3px; background: var(--panel-hi); overflow: hidden; }
+      .limit .fuell { display: block; height: 100%; background: var(--green); }
+      .limit .topf.warnung .fuell { background: var(--yellow); }
+      .limit .topf.kritisch .fuell { background: var(--red); }
+      .limit .topf.warnung b, .limit .topf.kritisch b { color: var(--text); }
+      .limit b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+      .bell {
+        background: var(--panel-hi);
+        border: 1px solid var(--line);
+        color: var(--text);
+        border-radius: 7px;
+        padding: 5px 11px;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .bell:hover:not(:disabled) { border-color: #5b6577; }
+      .bell:disabled { opacity: 0.55; cursor: default; }
+
+      /* Am Handy ist der Fenster-Knopf sinnlos -- der Rechner steht woanders. */
+      @media (max-width: 620px) {
+        body { padding: 14px 12px 40px; }
+        .grid { grid-template-columns: 1fr; }
+        button.focus { display: none; }
+        .counts { font-size: 19px; }
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+        gap: 14px;
+        /* Ohne das zieht die hoechste Kachel die ganze Zeile auf. */
+        align-items: start;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-left: 7px solid var(--grey);
+        border-radius: 10px;
+        padding: 13px 15px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        min-height: 128px;
+      }
+      .card.red { border-left-color: var(--red); background: linear-gradient(90deg, rgba(242, 69, 61, 0.13), transparent 55%), var(--panel); }
+      .card.yellow { border-left-color: var(--yellow); }
+      .card.green { border-left-color: var(--green); }
+      .card.grey { border-left-color: var(--grey); }
+      /* Gestrichelt = Ampel aus der Transkriptdatei geschaetzt, nicht per Hook gemeldet. */
+      .card.derived { border-top: 1px dashed var(--line); border-right: 1px dashed var(--line); border-bottom: 1px dashed var(--line); }
+
+      .top { display: flex; align-items: center; gap: 9px; }
+      .folder { font-size: 17px; font-weight: 650; letter-spacing: 0.1px; }
+      .state {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+      }
+      .state.red { color: var(--red); }
+      .state.yellow { color: var(--yellow); }
+      .state.green { color: var(--green); }
+      .state.grey { color: var(--grey); }
+
+      .anzahl {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--muted);
+        background: var(--panel-hi);
+        border-radius: 20px;
+        padding: 2px 9px;
+      }
+
+      .subs { display: flex; flex-direction: column; gap: 8px; }
+      /* Mehrere Sessions im selben Projekt: jede bekommt einen eigenen Block
+         mit eigener Farbe. Bei nur einer Session entfaellt die Abgrenzung,
+         damit eine gewoehnliche Kachel nicht verschachtelt aussieht. */
+      .sub {
+        border-left: 3px solid var(--line);
+        padding: 6px 0 4px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .sub.solo { border-left: none; padding: 0; }
+      .sub-top { display: flex; align-items: center; gap: 8px; }
+      .sub-top .dot { width: 9px; height: 9px; }
+      .sub-title { color: var(--muted); font-size: 13px; }
+      .sub-top .sub-title { color: var(--text); font-weight: 550; }
+      .sub-top .state { font-size: 10.5px; }
+
+      .ring { flex: none; display: block; }
+      .ring .spur { stroke: rgba(255, 255, 255, 0.14); }
+      .ring .fuell { stroke: var(--green); transition: stroke-dasharray 0.4s; }
+      .ring.warnung .fuell { stroke: var(--yellow); }
+      .ring.kritisch .fuell { stroke: var(--red); }
+
+      .title { color: var(--muted); font-size: 13px; }
+      .note {
+        background: var(--panel-hi);
+        border-radius: 6px;
+        padding: 6px 9px;
+        font-size: 13px;
+      }
+      .note.alert { color: #ffd7d5; background: rgba(242, 69, 61, 0.16); }
+      .last {
+        color: var(--muted);
+        font-size: 12.5px;
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .tool {
+        background: var(--panel-hi);
+        border-radius: 5px;
+        padding: 2px 7px;
+        font-size: 11.5px;
+        color: var(--text);
+      }
+
+      .meta {
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--muted);
+        padding-top: 4px;
+      }
+      .meta b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+      .ports { display: flex; gap: 6px; flex-wrap: wrap; }
+      a.port {
+        background: var(--panel-hi);
+        border: 1px solid var(--line);
+        color: #9ad0ff;
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-size: 12.5px;
+        text-decoration: none;
+        font-variant-numeric: tabular-nums;
+      }
+      a.port:hover { border-color: #4a90d9; }
+
+      button.focus {
+        background: var(--panel-hi);
+        border: 1px solid var(--line);
+        color: var(--text);
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-size: 12.5px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      button.focus:hover:not(:disabled) { border-color: #5b6577; background: #262c37; }
+      button.focus:disabled { opacity: 0.4; cursor: default; }
+
+      .foot { margin-top: 26px; color: var(--muted); font-size: 13px; }
+      .orphans { margin-bottom: 16px; }
+      .hint { opacity: 0.65; }
+      .foot .ports { margin-top: 8px; }
+      .foot .port { color: var(--muted); }
+      .empty { color: var(--muted); padding: 40px 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Claude-Ampel</h1>
+      <div class="counts" id="counts"></div>
+      <div class="limit" id="limit"></div>
+      <button class="bell" id="bell" hidden>🔔 Benachrichtigen</button>
+      <a class="bell" href="/settings">⚙ Einstellungen</a>
+      <div class="conn" id="conn">verbinde …</div>
+    </header>
+
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" hidden>Keine laufende Claude-Code-Session gefunden.</div>
+
+    <div class="foot" id="foot"></div>
+
+    <script>
+      const LABEL = {
+        attention: 'braucht dich',
+        question: 'fragt dich',
+        stalled: 'steht',
+        running: 'läuft',
+        done: 'fertig',
+        unknown: 'unbekannt',
+      };
+
+      const grid = document.getElementById('grid');
+      const counts = document.getElementById('counts');
+      const conn = document.getElementById('conn');
+      const foot = document.getElementById('foot');
+      const empty = document.getElementById('empty');
+
+      let snapshot = { sessions: [], otherPorts: [] };
+
+      function dauer(ms) {
+        if (!Number.isFinite(ms) || ms < 0) return '–';
+        const s = Math.floor(ms / 1000);
+        if (s < 60) return s + ' s';
+        const m = Math.floor(s / 60);
+        if (m < 60) return m + ':' + String(s % 60).padStart(2, '0') + ' min';
+        const h = Math.floor(m / 60);
+        if (h < 24) return h + ' h ' + (m % 60) + ' min';
+        return Math.floor(h / 24) + ' d ' + (h % 24) + ' h';
+      }
+
+      function sessionBlock(s, now, alleine) {
+        // Nur eine echte Rueckfrage verdient den auffaelligen Kasten. Ein
+        // Werkzeugname ist Beiwerk und gehoert in die Fusszeile -- der letzte
+        // Text von Claude ist fast immer das Nuetzlichere.
+        const note = s.status === 'attention' && s.note ? `<div class="note alert">${esc(s.note)}</div>` : '';
+        const werkzeug = s.status !== 'attention' && s.note ? `<span class="tool">${esc(s.note)}</span>` : '';
+        const letzter = s.lastText ? `<div class="last">${esc(s.lastText)}</div>` : '';
+        const gemeldet = s.source === 'hook' ? '' : ' <span title="Aus der Transkriptdatei abgeleitet, nicht per Hook gemeldet">≈</span>';
+
+        // Steht die Session allein in ihrem Projekt, traegt schon die Kachel
+        // Farbe und Zustand -- dann waere die Kopfzeile hier nur Doppelung.
+        const kopf = alleine
+          ? `<div class="sub-title">${esc(s.title ?? '(kein Titel)')}</div>`
+          : `<div class="sub-top">
+               <i class="dot ${s.color}"></i>
+               <span class="sub-title">${esc(s.title ?? '(kein Titel)')}</span>
+               ${ring(s.kontext, s.verdichtet)}
+               <span class="state ${s.color}">${LABEL[s.status]}${gemeldet}</span>
+             </div>`;
+
+        return `<div class="sub ${alleine ? 'solo' : ''}">
+          ${kopf}
+          ${note}
+          ${letzter}
+          <div class="meta">
+            <span>seit <b data-since="${s.since}">${dauer(now - s.since)}</b></span>
+            ${werkzeug}
+            <button class="focus" data-session="${esc(s.sessionId)}"
+              title="${s.hwnd ? esc(s.windowTitle ?? '') : 'Kein Fenster eindeutig zugeordnet — öffnet den Ordner über VS Code'}">Fenster</button>
+          </div>
+        </div>`;
+      }
+
+      function bisReset(iso) {
+        if (!iso) return '';
+        const rest = new Date(iso).getTime() - Date.now();
+        if (!Number.isFinite(rest) || rest <= 0) return 'jetzt';
+        const min = Math.round(rest / 60000);
+        if (min < 60) return `in ${min} min`;
+        const std = Math.round(min / 60);
+        return std < 48 ? `in ${std} h` : `in ${Math.round(std / 24)} d`;
+      }
+
+      function renderLimit() {
+        const feld = document.getElementById('limit');
+        const l = snapshot.limit;
+        if (!l) {
+          feld.innerHTML = '';
+          return;
+        }
+        const topf = (name, t) => {
+          if (!t) return '';
+          const klasse = t.prozent >= 90 ? 'kritisch' : t.prozent >= 75 ? 'warnung' : '';
+          const reset = bisReset(t.resetsAt);
+          return `<span class="topf ${klasse}" title="${name}: ${t.prozent}% verbraucht${reset ? ', Reset ' + reset : ''}">
+            ${name} <span class="spur"><span class="fuell" style="width:${Math.min(100, t.prozent)}%"></span></span> <b>${t.prozent}%</b>
+          </span>`;
+        };
+        feld.innerHTML =
+          topf('5 Std', l.sitzung) +
+          topf('Woche', l.woche) +
+          (l.proModell ?? []).map((m) => topf(m.name, { prozent: m.prozent, resetsAt: l.woche?.resetsAt })).join('');
+      }
+
+      function render() {
+        const now = Date.now();
+        const projekte = snapshot.projects ?? [];
+        const sessions = snapshot.sessions ?? [];
+        renderLimit();
+
+        const zaehler = { red: 0, yellow: 0, green: 0, grey: 0 };
+        for (const s of sessions) zaehler[s.color]++;
+        counts.innerHTML = ['red', 'yellow', 'green', 'grey']
+          .filter((c) => zaehler[c] > 0)
+          .map((c) => `<span class="count"><i class="dot ${c}"></i>${zaehler[c]}</span>`)
+          .join('');
+
+        empty.hidden = sessions.length > 0;
+
+        grid.innerHTML = projekte
+          .map((g) => {
+            const alleine = g.sessions.length === 1;
+            const abgeleitet = g.sessions.every((s) => s.source !== 'hook');
+            const klassen = ['card', g.color, abgeleitet ? 'derived' : 'hook'].join(' ');
+            const ports = (g.ports ?? [])
+              .map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">localhost:${p}</a>`)
+              .join('');
+            const zustandOben = alleine
+              ? `<span class="state ${g.color}">${LABEL[g.status]}${g.sessions[0].source === 'hook' ? '' : ' ≈'}</span>`
+              : `<span class="anzahl">${g.sessions.length} Sessions</span>`;
+
+            return `<div class="${klassen}">
+              <div class="top">
+                <i class="dot ${g.color}"></i>
+                <span class="folder" title="${esc(g.cwd ?? '')}">${esc(g.folder ?? '?')}</span>
+                ${alleine ? ring(g.sessions[0].kontext, g.sessions[0].verdichtet) : ''}
+                ${zustandOben}
+              </div>
+              ${ports ? `<div class="ports">${ports}</div>` : ''}
+              <div class="subs">${g.sessions.map((s) => sessionBlock(s, now, alleine)).join('')}</div>
+            </div>`;
+          })
+          .join('');
+
+        const rest = snapshot.otherPorts ?? [];
+        const verwaist = snapshot.orphans ?? [];
+
+        const teile = [];
+        if (verwaist.length) {
+          // Nichts wird stillschweigend versteckt -- aber auch nicht als Kachel
+          // gezeigt, wo es nur sein lebendiges Geschwister doppeln wuerde.
+          teile.push(
+            `<div class="orphans">${verwaist.length} vergessene Session${verwaist.length > 1 ? 's' : ''} ausgeblendet ` +
+              `<span class="hint">(Transkript von Claude Code weggeräumt, seither keine Aktivität)</span>: ` +
+              verwaist
+                .map((o) => `${esc(o.folder ?? '?')} <span class="hint">PID ${o.pid}, seit ${new Date(o.startedAt).toLocaleDateString('de-AT')}</span>`)
+                .join(' · ') +
+              `</div>`,
+          );
+        }
+        if (rest.length) {
+          teile.push(
+            `Weitere lauschende Ports ohne erkennbares Projekt:<div class="ports">${rest
+              .map((p) => `<a class="port" href="http://localhost:${p.port}" target="_blank" rel="noopener">localhost:${p.port} · ${esc(p.process ?? '')}</a>`)
+              .join('')}</div>`,
+          );
+        }
+        foot.innerHTML = teile.join('');
+      }
+
+      function esc(s) {
+        return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      }
+
+      // Kontext-Ring wie im Compact-Fenster von Claude Code.
+      function ring(kontext, verdichtet, groesse = 16) {
+        if (!kontext) return '';
+        const r = groesse / 2 - 2;
+        const umfang = 2 * Math.PI * r;
+        const gefuellt = (Math.min(100, kontext.prozent) / 100) * umfang;
+        const klasse = kontext.prozent >= 90 ? 'kritisch' : kontext.prozent >= 70 ? 'warnung' : '';
+        const tsd = Math.round(kontext.tokens / 1000);
+        const fenstertsd = Math.round(kontext.fenster / 1000);
+        const woher = { einstellung: 'laut settings.json', gemessen: 'gemessen', env: 'per Umgebungsvariable', standard: 'Standardfenster' }[kontext.fensterQuelle] ?? '';
+        const titel = `Kontext ${kontext.prozent}% · ${tsd}k von ${fenstertsd}k Tokens${woher ? ' (' + woher + ')' : ''}${kontext.modell ? ' · ' + kontext.modell : ''}${verdichtet ? ' · schon verdichtet' : ''}`;
+        return `<svg class="ring ${klasse}" width="${groesse}" height="${groesse}" viewBox="0 0 ${groesse} ${groesse}"><title>${titel}</title>
+          <circle class="spur" cx="${groesse / 2}" cy="${groesse / 2}" r="${r}" fill="none" stroke-width="2.5"/>
+          <circle class="fuell" cx="${groesse / 2}" cy="${groesse / 2}" r="${r}" fill="none" stroke-width="2.5"
+            stroke-linecap="round" stroke-dasharray="${gefuellt.toFixed(2)} ${umfang.toFixed(2)}"
+            transform="rotate(-90 ${groesse / 2} ${groesse / 2})"/>
+        </svg>`;
+      }
+
+      // Die Dauern laufen im Browser weiter, damit der Server nur bei echten
+      // Aenderungen senden muss.
+      setInterval(() => {
+        const now = Date.now();
+        for (const el of document.querySelectorAll('[data-since]')) {
+          el.textContent = dauer(now - Number(el.dataset.since));
+        }
+      }, 1000);
+
+      grid.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('button.focus');
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        try {
+          await fetch('/api/focus', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionId: btn.dataset.session }),
+          });
+        } catch {
+          /* Server weg -- die Verbindungsanzeige sagt es ohnehin. */
+        }
+        setTimeout(() => (btn.disabled = false), 600);
+      });
+
+      // --- Benachrichtigungen -------------------------------------------------
+      // Push braucht einen sicheren Kontext: localhost oder https. Ueber den
+      // Cloudflare-Tunnel ist das gegeben, im WLAN per nacktem http nicht --
+      // dann bleibt der Knopf aus, statt einen Fehler zu produzieren.
+      const bell = document.getElementById('bell');
+
+      function base64ZuUint8(base64) {
+        const roh = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
+        return Uint8Array.from(roh, (c) => c.charCodeAt(0));
+      }
+
+      async function pushEinrichten() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !window.isSecureContext) return;
+        bell.hidden = false;
+
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        const vorhanden = await reg.pushManager.getSubscription();
+        if (vorhanden && Notification.permission === 'granted') {
+          bell.textContent = '🔔 aktiv';
+          bell.disabled = true;
+          return;
+        }
+
+        bell.onclick = async () => {
+          bell.disabled = true;
+          try {
+            const erlaubnis = await Notification.requestPermission();
+            if (erlaubnis !== 'granted') {
+              bell.textContent = '🔕 abgelehnt';
+              return;
+            }
+            const { publicKey } = await (await fetch('/api/vapid')).json();
+            if (!publicKey) throw new Error('kein VAPID-Schlüssel');
+            const abo =
+              (await reg.pushManager.getSubscription()) ??
+              (await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: base64ZuUint8(publicKey),
+              }));
+            await fetch('/api/subscribe', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(abo),
+            });
+            bell.textContent = '🔔 aktiv';
+          } catch (err) {
+            bell.textContent = '🔕 fehlgeschlagen';
+            bell.disabled = false;
+            console.error(err);
+          }
+        };
+      }
+      pushEinrichten().catch((err) => console.error(err));
+
+      let quelle = null;
+      function verbinde() {
+        quelle?.close();
+        quelle = new EventSource('/api/events');
+        quelle.onopen = () => {
+          conn.textContent = 'verbunden';
+          conn.classList.remove('down');
+        };
+        quelle.onmessage = (ev) => {
+          try {
+            snapshot = JSON.parse(ev.data);
+            render();
+          } catch {
+            /* kaputter Frame -- naechster kommt gleich */
+          }
+        };
+        quelle.onerror = () => {
+          conn.textContent = 'keine Verbindung zum Server';
+          conn.classList.add('down');
+          quelle.close();
+          setTimeout(verbinde, 2000);
+        };
+      }
+      verbinde();
+    </script>
+  </body>
+</html>

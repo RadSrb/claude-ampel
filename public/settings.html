@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e1116" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <title>Claude-Ampel · Einstellungen</title>
+    <style>
+      :root {
+        --bg: #0e1116;
+        --panel: #171b22;
+        --panel-hi: #1e232c;
+        --line: #2a313c;
+        --text: #e7ecf3;
+        --muted: #8c97a8;
+        --red: #f2453d;
+        --green: #2ecc71;
+        --blau: #4a90d9;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+        padding: 24px 22px 60px;
+      }
+      .huelle { max-width: 640px; margin: 0 auto; }
+
+      header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 22px; }
+      h1 { font-size: 20px; margin: 0; }
+      a.zurueck { color: var(--muted); text-decoration: none; font-size: 13.5px; margin-left: auto; }
+      a.zurueck:hover { color: var(--text); }
+
+      h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin: 26px 0 10px; font-weight: 600; }
+
+      .block { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; }
+
+      .feld { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+      .feld:last-child { border-bottom: none; }
+      .feld .text { flex: 1; min-width: 0; }
+      .feld .label { font-weight: 550; }
+      .feld .hinweis { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+      .feld .neustart { color: #f5a524; font-size: 11.5px; }
+
+      input[type='number'] {
+        width: 96px;
+        background: var(--panel-hi);
+        border: 1px solid var(--line);
+        color: var(--text);
+        border-radius: 7px;
+        padding: 7px 9px;
+        font: inherit;
+        font-size: 14px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      input[type='number']:focus { outline: none; border-color: var(--blau); }
+      .einheit { color: var(--muted); font-size: 12.5px; width: 74px; }
+
+      button {
+        background: var(--panel-hi);
+        border: 1px solid var(--line);
+        color: var(--text);
+        border-radius: 8px;
+        padding: 8px 15px;
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) { border-color: #5b6577; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button.haupt { background: var(--blau); border-color: var(--blau); color: #fff; font-weight: 550; }
+      button.haupt:hover:not(:disabled) { background: #3d7fc4; }
+
+      .reihe { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+      .meldung { font-size: 13.5px; }
+      .meldung.gut { color: var(--green); }
+      .meldung.schlecht { color: var(--red); }
+      .meldung.warn { color: #f5a524; }
+
+      .zustand { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+      .punkt { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+      .punkt.an { background: var(--green); }
+    </style>
+  </head>
+  <body>
+    <div class="huelle">
+      <header>
+        <h1>Einstellungen</h1>
+        <a class="zurueck" href="/">← zurück zur Ampel</a>
+      </header>
+
+      <h2>Overlay</h2>
+      <div class="block">
+        <div class="feld">
+          <div class="text">
+            <div class="label">Mini-Overlay</div>
+            <div class="hinweis">Schmale Spalte, die über allen Fenstern bleibt. Läuft als eigener Prozess.</div>
+            <div class="zustand" id="overlayZustand" style="margin-top: 6px">
+              <span class="punkt" id="overlayPunkt"></span><span id="overlayText">wird geprüft …</span>
+            </div>
+          </div>
+          <button id="overlayKnopf" disabled>…</button>
+        </div>
+      </div>
+
+      <h2>Ampel-Verhalten</h2>
+      <div class="block" id="felder"></div>
+
+      <div class="reihe">
+        <button class="haupt" id="speichern">Speichern</button>
+        <button id="zuruecksetzen">Standardwerte</button>
+        <span class="meldung" id="meldung"></span>
+      </div>
+    </div>
+
+    <script>
+      const felderDiv = document.getElementById('felder');
+      const meldung = document.getElementById('meldung');
+      const overlayKnopf = document.getElementById('overlayKnopf');
+      const overlayPunkt = document.getElementById('overlayPunkt');
+      const overlayText = document.getElementById('overlayText');
+
+      let felder = {};
+
+      function esc(s) {
+        return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      }
+
+      function zeige(text, art = '') {
+        meldung.textContent = text;
+        meldung.className = 'meldung ' + art;
+      }
+
+      function overlayAnzeigen(laeuft) {
+        overlayPunkt.classList.toggle('an', laeuft);
+        overlayText.textContent = laeuft ? 'läuft' : 'nicht gestartet';
+        overlayKnopf.textContent = laeuft ? 'Beenden' : 'Starten';
+        overlayKnopf.dataset.aktion = laeuft ? 'stop' : 'start';
+        overlayKnopf.disabled = false;
+      }
+
+      async function laden() {
+        const daten = await (await fetch('/api/settings')).json();
+        felder = daten.felder;
+        felderDiv.innerHTML = Object.entries(felder)
+          .map(
+            ([name, f]) => `<div class="feld">
+              <div class="text">
+                <div class="label">${esc(f.label)}</div>
+                <div class="hinweis">${esc(f.hinweis)}${f.neustart ? ' <span class="neustart">Neustart nötig</span>' : ''}</div>
+              </div>
+              <input type="number" id="f-${esc(name)}" value="${daten.werte[name]}" min="${f.min}" max="${f.max}" />
+              <span class="einheit">${esc(f.einheit)}</span>
+            </div>`,
+          )
+          .join('');
+        overlayAnzeigen(daten.overlay);
+      }
+
+      document.getElementById('speichern').onclick = async () => {
+        const eingabe = {};
+        for (const name of Object.keys(felder)) eingabe[name] = document.getElementById('f-' + name).value;
+
+        const antwort = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(eingabe),
+        });
+        const daten = await antwort.json();
+
+        if (!daten.ok) {
+          zeige(daten.fehler.join(' · '), 'schlecht');
+          return;
+        }
+        if (daten.neustart?.length) {
+          zeige('Gespeichert. Für Takt bzw. Port den Server neu starten.', 'warn');
+        } else {
+          zeige('Gespeichert, wirkt sofort.', 'gut');
+        }
+      };
+
+      document.getElementById('zuruecksetzen').onclick = () => {
+        for (const [name, f] of Object.entries(felder)) document.getElementById('f-' + name).value = f.standard;
+        zeige('Standardwerte eingetragen — noch nicht gespeichert.');
+      };
+
+      overlayKnopf.onclick = async () => {
+        const aktion = overlayKnopf.dataset.aktion;
+        overlayKnopf.disabled = true;
+        overlayText.textContent = aktion === 'start' ? 'startet …' : 'wird beendet …';
+        try {
+          const daten = await (
+            await fetch('/api/overlay', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ aktion }),
+            })
+          ).json();
+          // Electron braucht einen Moment, bis das Fenster wirklich steht.
+          setTimeout(async () => {
+            const stand = await (await fetch('/api/settings')).json();
+            overlayAnzeigen(stand.overlay);
+            if (!daten.ok) zeige('Overlay konnte nicht gestartet werden.', 'schlecht');
+          }, 2500);
+        } catch {
+          overlayAnzeigen(false);
+          zeige('Server nicht erreichbar.', 'schlecht');
+        }
+      };
+
+      laden().catch(() => zeige('Einstellungen konnten nicht geladen werden.', 'schlecht'));
+    </script>
+  </body>
+</html>

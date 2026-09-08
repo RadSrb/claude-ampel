@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ampel Mini</title>
+    <style>
+      :root {
+        --panel: rgba(18, 22, 28, 0.93);
+        --line: #2c333f;
+        --text: #e7ecf3;
+        --muted: #8c97a8;
+        --red: #f2453d;
+        --yellow: #f5a524;
+        --green: #2ecc71;
+        --grey: #6b7686;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        /* Durchsichtig, damit das rahmenlose Electron-Fenster nur die
+           abgerundete Flaeche unten zeigt und keinen grauen Kasten. */
+        background: transparent;
+        overflow: hidden;
+        font: 12.5px/1.35 "Segoe UI", system-ui, sans-serif;
+        color: var(--text);
+        user-select: none;
+        cursor: default;
+      }
+
+      .panel {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        overflow: hidden;
+        backdrop-filter: blur(14px);
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 8px 7px 11px;
+        border-bottom: 1px solid var(--line);
+        /* Der Kopf ist der Griff: hier wird das Fenster gezogen. */
+        -webkit-app-region: drag;
+      }
+      header .titel { font-weight: 650; letter-spacing: 0.2px; font-size: 12px; }
+      header .zaehler { margin-left: auto; display: flex; gap: 7px; font-variant-numeric: tabular-nums; }
+      header .zaehler span { display: flex; align-items: center; gap: 3px; }
+
+      .knopf {
+        -webkit-app-region: no-drag;
+        background: none;
+        border: none;
+        color: var(--muted);
+        font: inherit;
+        font-size: 14px;
+        line-height: 1;
+        padding: 2px 4px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .knopf:hover { color: var(--text); background: rgba(255, 255, 255, 0.09); }
+
+      .liste { flex: 1; overflow-y: auto; overflow-x: hidden; }
+      .liste::-webkit-scrollbar { width: 7px; }
+      .liste::-webkit-scrollbar-thumb { background: #333b48; border-radius: 4px; }
+
+      .zeile {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+        cursor: pointer;
+      }
+      .zeile:hover { background: rgba(255, 255, 255, 0.06); }
+      .zeile.rot { background: rgba(242, 69, 61, 0.12); }
+      .zeile.rot:hover { background: rgba(242, 69, 61, 0.2); }
+
+      .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+      .dot.red { background: var(--red); }
+      .dot.yellow { background: var(--yellow); }
+      .dot.green { background: var(--green); }
+      .dot.grey { background: var(--grey); }
+
+      .name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      /* Kontext-Ring wie im Compact-Fenster von Claude Code: der gefuellte
+         Anteil zeigt, wie voll der Kontext ist, bevor verdichtet wird. */
+      .ring { flex: none; display: block; }
+      .ring .spur { stroke: rgba(255, 255, 255, 0.16); }
+      .ring .fuell { stroke: var(--green); transition: stroke-dasharray 0.4s; }
+      .ring.warnung .fuell { stroke: var(--yellow); }
+      .ring.kritisch .fuell { stroke: var(--red); }
+
+      .anzahl {
+        font-size: 10px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.09);
+        border-radius: 9px;
+        padding: 0 5px;
+        flex: none;
+      }
+      .zeit {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        font-size: 11px;
+        flex: none;
+      }
+
+      .leer, .weg { color: var(--muted); padding: 14px 11px; text-align: center; }
+      .weg { color: var(--red); }
+
+      /* Nutzungslimit: zwei duenne Balken, damit man den Rest im Blick hat,
+         ohne dass die Session-Liste Platz verliert. */
+      .limit {
+        border-top: 1px solid var(--line);
+        padding: 7px 10px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .balken { display: flex; align-items: center; gap: 7px; font-size: 11px; }
+      .balken .kopf { color: var(--muted); width: 38px; flex: none; }
+      .balken .spur {
+        display: block;
+        flex: 1;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+      .balken .fuell { display: block; height: 100%; border-radius: 3px; background: var(--green); }
+      .balken.warnung .fuell { background: var(--yellow); }
+      .balken.kritisch .fuell { background: var(--red); }
+      .balken .wert { color: var(--muted); width: 30px; text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+      .balken.warnung .wert, .balken.kritisch .wert { color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <header>
+        <span class="titel">Ampel</span>
+        <span class="zaehler" id="zaehler"></span>
+        <button class="knopf" id="gross" title="Großes Dashboard öffnen">⧉</button>
+        <button class="knopf" id="zu" title="Overlay schließen">✕</button>
+      </header>
+      <div class="liste" id="liste"></div>
+      <div class="limit" id="limit" hidden></div>
+    </div>
+
+    <script>
+      const liste = document.getElementById('liste');
+      const zaehler = document.getElementById('zaehler');
+      const limitFeld = document.getElementById('limit');
+      let snapshot = { projects: [], sessions: [] };
+      let verbunden = false;
+
+      function dauer(ms) {
+        const s = Math.floor(ms / 1000);
+        if (s < 60) return s + 's';
+        const m = Math.floor(s / 60);
+        if (m < 60) return m + 'm';
+        const h = Math.floor(m / 60);
+        return h < 24 ? h + 'h' : Math.floor(h / 24) + 'd';
+      }
+
+      function esc(s) {
+        return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      }
+
+      // Kontext-Ring. Radius 5 bei 14 px Kantenlaenge, Umfang 2*pi*5 = 31.4.
+      function ring(kontext, verdichtet, groesse = 14) {
+        if (!kontext) return '';
+        const r = groesse / 2 - 2;
+        const umfang = 2 * Math.PI * r;
+        const gefuellt = (Math.min(100, kontext.prozent) / 100) * umfang;
+        const klasse = kontext.prozent >= 90 ? 'kritisch' : kontext.prozent >= 70 ? 'warnung' : '';
+        const tsd = Math.round(kontext.tokens / 1000);
+        const fenstertsd = Math.round(kontext.fenster / 1000);
+        const woher = { einstellung: 'laut settings.json', gemessen: 'gemessen', env: 'per Umgebungsvariable', standard: 'Standardfenster' }[kontext.fensterQuelle] ?? '';
+        const titel = `Kontext ${kontext.prozent}% · ${tsd}k von ${fenstertsd}k Tokens${woher ? ' (' + woher + ')' : ''}${kontext.modell ? ' · ' + kontext.modell : ''}${verdichtet ? ' · schon verdichtet' : ''}`;
+        return `<svg class="ring ${klasse}" width="${groesse}" height="${groesse}" viewBox="0 0 ${groesse} ${groesse}"><title>${titel}</title>
+          <circle class="spur" cx="${groesse / 2}" cy="${groesse / 2}" r="${r}" fill="none" stroke-width="2.5"/>
+          <circle class="fuell" cx="${groesse / 2}" cy="${groesse / 2}" r="${r}" fill="none" stroke-width="2.5"
+            stroke-linecap="round" stroke-dasharray="${gefuellt.toFixed(2)} ${umfang.toFixed(2)}"
+            transform="rotate(-90 ${groesse / 2} ${groesse / 2})"/>
+        </svg>`;
+      }
+
+      function bisReset(iso) {
+        if (!iso) return '';
+        const rest = new Date(iso).getTime() - Date.now();
+        if (!Number.isFinite(rest) || rest <= 0) return 'jetzt';
+        const min = Math.round(rest / 60000);
+        if (min < 60) return `in ${min} min`;
+        const std = Math.round(min / 60);
+        return std < 48 ? `in ${std} h` : `in ${Math.round(std / 24)} d`;
+      }
+
+      function balken(kopf, topf) {
+        if (!topf) return '';
+        const klasse = topf.prozent >= 90 ? 'kritisch' : topf.prozent >= 75 ? 'warnung' : '';
+        const reset = bisReset(topf.resetsAt);
+        return `<div class="balken ${klasse}" title="${kopf}: ${topf.prozent}% verbraucht${reset ? ', Reset ' + reset : ''}">
+          <span class="kopf">${kopf}</span>
+          <span class="spur"><span class="fuell" style="width:${Math.min(100, topf.prozent)}%"></span></span>
+          <span class="wert">${topf.prozent}%</span>
+        </div>`;
+      }
+
+      function renderLimit() {
+        const l = snapshot.limit;
+        if (!l) {
+          limitFeld.hidden = true;
+          return;
+        }
+        limitFeld.hidden = false;
+        const modelle = l.proModell?.length
+          ? l.proModell.map((m) => balken(m.name.slice(0, 5), { prozent: m.prozent, resetsAt: l.woche?.resetsAt })).join('')
+          : '';
+        limitFeld.innerHTML = balken('5 Std', l.sitzung) + balken('Woche', l.woche) + modelle;
+      }
+
+      function render() {
+        const now = Date.now();
+        const projekte = snapshot.projects ?? [];
+        renderLimit();
+
+        const z = { red: 0, yellow: 0, green: 0, grey: 0 };
+        for (const s of snapshot.sessions ?? []) z[s.color]++;
+        zaehler.innerHTML = ['red', 'yellow', 'green', 'grey']
+          .filter((c) => z[c] > 0)
+          .map((c) => `<span><i class="dot ${c}"></i>${z[c]}</span>`)
+          .join('');
+
+        if (!verbunden) {
+          liste.innerHTML = '<div class="weg">keine Verbindung</div>';
+          return;
+        }
+        if (!projekte.length) {
+          liste.innerHTML = '<div class="leer">keine Session</div>';
+          return;
+        }
+
+        liste.innerHTML = projekte
+          .map((g) => {
+            // Anspringbar ist die dringendste Session der Gruppe -- das ist die,
+            // wegen der man ueberhaupt hinschaut.
+            const ziel = g.sessions[0];
+            const mehr = g.sessions.length > 1 ? `<span class="anzahl">${g.sessions.length}</span>` : '';
+            return `<div class="zeile ${g.color === 'red' ? 'rot' : ''}" data-session="${esc(ziel.sessionId)}"
+                      title="${esc(g.cwd ?? '')}${ziel.title ? ' — ' + esc(ziel.title) : ''}">
+              <i class="dot ${g.color}"></i>
+              <span class="name">${esc(g.folder ?? '?')}</span>
+              ${ring(ziel.kontext, ziel.verdichtet)}
+              ${mehr}
+              <span class="zeit" data-since="${g.since}">${dauer(now - g.since)}</span>
+            </div>`;
+          })
+          .join('');
+      }
+
+      setInterval(() => {
+        const now = Date.now();
+        for (const el of document.querySelectorAll('[data-since]')) {
+          el.textContent = dauer(now - Number(el.dataset.since));
+        }
+      }, 1000);
+
+      liste.addEventListener('click', (ev) => {
+        const zeile = ev.target.closest('.zeile');
+        if (!zeile) return;
+        fetch('/api/focus', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId: zeile.dataset.session }),
+        }).catch(() => {});
+      });
+
+      document.getElementById('zu').onclick = () => window.close();
+      document.getElementById('gross').onclick = () => {
+        fetch('/api/open-dashboard', { method: 'POST' }).catch(() => {});
+      };
+
+      let quelle = null;
+      function verbinde() {
+        quelle?.close();
+        quelle = new EventSource('/api/events');
+        quelle.onopen = () => {
+          verbunden = true;
+          render();
+        };
+        quelle.onmessage = (ev) => {
+          try {
+            snapshot = JSON.parse(ev.data);
+            verbunden = true;
+            render();
+          } catch {
+            /* naechster Frame kommt gleich */
+          }
+        };
+        quelle.onerror = () => {
+          verbunden = false;
+          render();
+          quelle.close();
+          setTimeout(verbinde, 2000);
+        };
+      }
+      verbinde();
+      render();
+    </script>
+  </body>
+</html>

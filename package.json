@@ -1,0 +1,18 @@
+{
+  "name": "claude-ampel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ampel-Dashboard fuer alle offenen Claude-Code-Sessions",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "overlay": "electron overlay/main.cjs",
+    "tunnel": "node tunnel.js"
+  },
+  "dependencies": {
+    "electron": "^44.2.0",
+    "qrcode-terminal": "^0.12.0",
+    "web-push": "^3.6.7"
+  }
+}

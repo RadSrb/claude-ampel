@@ -1,0 +1,7 @@
+# Enthaelt Zugangstoken und den privaten VAPID-Schluessel.
+config.json
+# Push-Abos der Endgeraete.
+push-abos.json
+node_modules/
+# Gemerkte Fensterposition des Overlays.
+overlay/position.json

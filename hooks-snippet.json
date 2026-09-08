@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+    ],
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+    ]
+  }
+}
