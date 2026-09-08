@@ -33,7 +33,10 @@ try {
 const log = fs.createWriteStream(LOGDATEI, { flags: 'a' });
 
 function zeitstempel() {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const d = new Date();
+  const z = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} `
+    + `${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
 }
 
 /** Nimmt das Zugangstoken aus der Startmeldung -- Logs werden weitergereicht. */
