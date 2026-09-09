@@ -19,6 +19,7 @@ import { groupByProject } from './lib/grouping.js';
 import { nutzung } from './lib/usage.js';
 import { loadOrCreateSecrets, tokenGleich } from './lib/secrets.js';
 import { PushDienst } from './lib/push.js';
+import { overlaySucher } from './lib/overlay.js';
 import { CODE_PORT_BELEGT } from './lib/watchdog-regel.js';
 import { FELDER, oeffentlich, pruefen, sichern, brauchtNeustart } from './lib/settings.js';
 
@@ -56,6 +57,18 @@ function overlayLaeuft() {
   return Boolean(overlayProzess && overlayProzess.exitCode === null);
 }
 
+// Seit dem Autostart ueber die Aufgabenplanung startet der Server das Overlay
+// im Normalfall nicht selbst. overlayLaeuft() allein meldete deshalb dauerhaft
+// "nicht gestartet", obwohl es sichtbar auf dem Bildschirm lag.
+const fremdesOverlay = overlaySucher(HERE);
+
+/** PID eines laufenden Overlays -- eigenes oder fremd gestartetes. */
+async function overlayPid() {
+  if (overlayLaeuft()) return overlayProzess.pid;
+  const gefunden = await fremdesOverlay();
+  return gefunden ? gefunden.pid : null;
+}
+
 /**
  * Pfad zur Electron-Binaerdatei. Nicht der .cmd-Starter aus node_modules/.bin:
  * seit einer Sicherheitsaenderung weigert sich Node, .cmd-Dateien ohne Shell
@@ -84,8 +97,10 @@ function umgebungOhneNodeModus() {
   return env;
 }
 
-function overlayStarten() {
-  if (overlayLaeuft()) return true;
+async function overlayStarten() {
+  // Auch ein fremd gestartetes zaehlt -- sonst startet der Knopf ein zweites,
+  // das die Einzelinstanz-Sperre sofort wieder beendet.
+  if (await overlayPid()) return true;
   const electron = electronPfad();
   if (!electron) return false;
   try {
@@ -106,7 +121,14 @@ function overlayStarten() {
   }
 }
 
-function overlayBeenden() {
+async function overlayBeenden() {
+  // Ein Overlay, das wir nicht selbst gestartet haben, kennt nur seine PID.
+  if (!overlayLaeuft()) {
+    const pid = await overlayPid();
+    if (!pid) return true;
+    await new Promise((f) => exec(`taskkill /PID ${pid} /T /F`, { windowsHide: true }, () => f()));
+    return true;
+  }
   return new Promise((fertig) => {
     if (!overlayLaeuft()) return fertig(true);
     const p = overlayProzess;
@@ -285,7 +307,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/settings') {
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ felder: FELDER, werte: oeffentlich(CONFIG), overlay: overlayLaeuft() }));
+    res.end(JSON.stringify({ felder: FELDER, werte: oeffentlich(CONFIG), overlay: (await overlayPid()) !== null }));
     return;
   }
 
@@ -333,9 +355,9 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: false, fehler: 'aktion muss start oder stop sein' }));
       return;
     }
-    const ok = aktion === 'start' ? overlayStarten() : await overlayBeenden();
+    const ok = aktion === 'start' ? await overlayStarten() : await overlayBeenden();
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok, laeuft: overlayLaeuft() }));
+    res.end(JSON.stringify({ ok, laeuft: (await overlayPid()) !== null }));
     return;
   }
 
