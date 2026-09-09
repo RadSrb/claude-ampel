@@ -289,7 +289,7 @@
         return Math.floor(h / 24) + ' d ' + (h % 24) + ' h';
       }
 
-      function sessionBlock(s, now, alleine) {
+      function sessionBlock(s, now, alleine, projekt) {
         // Nur eine echte Rueckfrage verdient den auffaelligen Kasten. Ein
         // Werkzeugname ist Beiwerk und gehoert in die Fusszeile -- der letzte
         // Text von Claude ist fast immer das Nuetzlichere.
@@ -301,11 +301,14 @@
 
         // Steht die Session allein in ihrem Projekt, traegt schon die Kachel
         // Farbe und Zustand -- dann waere die Kopfzeile hier nur Doppelung.
+        // Jede Session traegt den Projektnamen, nie den von Claude Code
+        // vergebenen Sitzungstitel -- der wechselt mit jeder Aufgabe.
+        const name = esc(projekt ?? '?');
         const kopf = alleine
-          ? `<div class="sub-title">${esc(s.title ?? '(kein Titel)')}</div>`
+          ? `<div class="sub-title">${name}</div>`
           : `<div class="sub-top">
                <i class="dot ${s.color}"></i>
-               <span class="sub-title">${esc(s.title ?? '(kein Titel)')}</span>
+               <span class="sub-title">${name}</span>
                ${ring(s.kontext, s.verdichtet)}
                <span class="state ${s.color}">${LABEL[s.status]}${gemeldet}</span>
              </div>`;
@@ -390,12 +393,12 @@
             return `<div class="${klassen}">
               <div class="top">
                 <i class="dot ${g.color}"></i>
-                <span class="folder" title="${esc(g.cwd ?? '')}">${esc(g.folder ?? '?')}</span>
+                <span class="folder" title="${esc(g.cwd ?? '')}">${esc(g.projekt ?? g.folder ?? '?')}</span>
                 ${alleine ? ring(g.sessions[0].kontext, g.sessions[0].verdichtet) : ''}
                 ${zustandOben}
               </div>
               ${ports ? `<div class="ports">${ports}</div>` : ''}
-              <div class="subs">${g.sessions.map((s) => sessionBlock(s, now, alleine)).join('')}</div>
+              <div class="subs">${g.sessions.map((s) => sessionBlock(s, now, alleine, g.projekt ?? g.folder)).join('')}</div>
             </div>`;
           })
           .join('');
