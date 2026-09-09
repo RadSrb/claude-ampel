@@ -188,6 +188,104 @@ test('ein gewoehnlicher Werkzeugaufruf ist keine Frage', () => {
   assert.equal(readTranscriptTail(file).frage, false);
 });
 
+test('eine Bitte am Ende gilt als Frage, auch ohne Fragezeichen', () => {
+  const root = makeFixture();
+  const file = writeTranscript(root, 'c--x', 'f7', [
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        stop_reason: 'end_turn',
+        content: [
+          {
+            type: 'text',
+            text: `Jetzt brauche ich die Links.
+
+Schick mir einfach die URLs. Ich zerlege sie dann und lege dir den Entwurf vor. Erst danach schreibe ich Code.`,
+          },
+        ],
+      },
+    },
+  ]);
+  assert.equal(readTranscriptTail(file).frage, true);
+});
+
+test('eine Frage vor einer Optionsliste gilt als Frage', () => {
+  const root = makeFixture();
+  const file = writeTranscript(root, 'c--x', 'f8', [
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        stop_reason: 'end_turn',
+        content: [
+          {
+            type: 'text',
+            text: `Der Zweig hat 14 Commits. Was soll damit geschehen?
+
+1. Lokal zusammenfuehren
+2. Pull Request anlegen
+3. So stehen lassen`,
+          },
+        ],
+      },
+    },
+  ]);
+  assert.equal(readTranscriptTail(file).frage, true);
+});
+
+test('ein Fragezeichen in Inline-Code zaehlt nicht', () => {
+  const root = makeFixture();
+  const file = writeTranscript(root, 'c--x', 'f9', [
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Fertig. Pruefen kannst du es mit `GET /api/lauf?probe=1`.' }],
+      },
+    },
+  ]);
+  assert.equal(readTranscriptTail(file).frage, false);
+});
+
+test('ein Fragezeichen in einem Zitat zaehlt nicht', () => {
+  const root = makeFixture();
+  const file = writeTranscript(root, 'c--x', 'f10', [
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Der Bot antwortet jetzt auf „gibt es neue Bewerber?“ statt zu schweigen.' }],
+      },
+    },
+  ]);
+  assert.equal(readTranscriptTail(file).frage, false);
+});
+
+test('ein Bericht ohne Bitte bleibt fertig, auch nach einer Frage weiter oben', () => {
+  const root = makeFixture();
+  const file = writeTranscript(root, 'c--x', 'f11', [
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        stop_reason: 'end_turn',
+        content: [
+          {
+            type: 'text',
+            text: `Warum war das langsam? Weil der Index fehlte.
+
+Er steht jetzt. Der lokale Server laeuft weiter auf Port 8080.`,
+          },
+        ],
+      },
+    },
+  ]);
+  assert.equal(readTranscriptTail(file).frage, false);
+});
+
 test('kontextStand rechnet den Kontext aus der letzten Nachricht', () => {
   const root = makeFixture();
   const file = writeTranscript(root, 'c--x', 'k1', [
