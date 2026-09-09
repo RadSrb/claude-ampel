@@ -12,6 +12,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { portBelegt, portAusConfig } from './lib/port.js';
 import { overlaySucher } from './lib/overlay.js';
 import { electronPfad, umgebungOhneNodeModus } from './lib/electron.js';
 import { neustartEntscheidung } from './lib/watchdog-regel.js';
@@ -79,8 +80,21 @@ function mitschreiben(strom, kennung) {
 let kind = null;
 let fehlstarts = 0;
 let beendet = false;
+let ersterStart = true;
+// Still aussteigen, wenn die Ampel schon laeuft -- kein Log, kein Serverstart.
+let still = false;
 
-function starte() {
+async function starte() {
+  // Die Aufgabenplanung ruft alle zwei Minuten -- im Normalfall laeuft die
+  // Ampel laengst. Frueher startete der Waechter dafuer jedes Mal einen
+  // Server, liess ihn an EADDRINUSE scheitern und schrieb drei Zeilen Log.
+  if (ersterStart) {
+    ersterStart = false;
+    if (await portBelegt(portAusConfig(HIER))) {
+      still = true;
+      process.exit(0);
+    }
+  }
   const start = Date.now();
   kind = spawn(process.execPath, ['server.js'], {
     cwd: HIER,
@@ -112,7 +126,7 @@ function starte() {
       log.end();
       process.exit(code === 0 ? 0 : 1);
     }
-    setTimeout(starte, urteil.wartenMs);
+    setTimeout(() => starte().catch((err) => notiere(`! Neustart fehlgeschlagen: ${err.message}`)), urteil.wartenMs);
   });
 
   kind.on('error', (err) => notiere(`! Start fehlgeschlagen: ${err.message}`));
@@ -149,7 +163,7 @@ for (const art of ['uncaughtException', 'unhandledRejection']) {
 process.on('exit', (code) => {
   // Faellt bei einem harten Abschuss von aussen (TerminateProcess) NICHT an.
   // Fehlt diese Zeile im Log, war es kein Fehler im Waechter selbst.
-  sofort(`--- Waechter endet, Code ${code} ---`);
+  if (!still) sofort(`--- Waechter endet, Code ${code} ---`);
 });
 
 // --- Overlay am Leben halten ---------------------------------------------
@@ -212,4 +226,4 @@ function aufsichtStarten() {
   setInterval(takt, 10000).unref();
 }
 
-starte();
+starte().catch((err) => notiere(`! Start fehlgeschlagen: ${err.message}`));
