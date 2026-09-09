@@ -148,5 +148,17 @@ function fensterBauen() {
   }
 }
 
-app.whenReady().then(fensterBauen);
+// Mit dem Autostart wird der Doppelstart zum Normalfall: die Aufgabenplanung
+// hat die Ampel laengst hochgezogen, dann klickt man aus Gewohnheit noch die
+// Verknuepfung an. Der Server wehrt sich ueber den belegten Port -- das
+// Overlay braucht seine eigene Sperre, sonst haengen zwei Spalten uebereinander.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const [offen] = BrowserWindow.getAllWindows();
+    offen?.showInactive();
+  });
+  app.whenReady().then(fensterBauen);
+}
 app.on('window-all-closed', () => app.quit());

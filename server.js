@@ -230,6 +230,15 @@ async function tick() {
       /* Push ist Beiwerk -- ein Fehler darf die Ampel nicht stoppen. */
     });
   }
+
+  // Vorwarnung, bevor das Fuenf-Stunden-Fenster zu ist. Einmal je Fenster --
+  // die Entscheidung darueber trifft der Push-Dienst.
+  const knapp = push.neuKnapp(limit);
+  if (knapp) {
+    push.meldenKnapp(knapp).catch(() => {
+      /* dito */
+    });
+  }
 }
 
 function broadcast() {

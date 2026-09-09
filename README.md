@@ -46,6 +46,7 @@ Läuft der Server schon, kommt nur das Overlay dazu.
 | `start.cmd` | Nur der Server, mit sichtbarem Protokoll. Für die Fehlersuche. |
 | `overlay.cmd` | Nur die Spalte. Setzt einen laufenden Server voraus. |
 | `tunnel.cmd` | Zugriff vom Handy, zeigt einen QR-Code. |
+| `autostart.cmd` | Start bei der Anmeldung ein- oder ausschalten. |
 
 `start.cmd` gibt die Adresse **samt Token** aus:
 
@@ -54,6 +55,28 @@ Claude-Ampel: http://127.0.0.1:4317/?t=<token>
 ```
 
 Einmal aufrufen — das Token wandert in ein Cookie, danach genügt `http://127.0.0.1:4317`.
+
+### Bei der Anmeldung mitstarten
+
+```
+autostart.cmd ein      trägt die Ampel in die Aufgabenplanung ein
+autostart.cmd          zeigt, ob sie eingetragen ist
+autostart.cmd aus      entfernt den Eintrag wieder
+```
+
+Die Aufgabe heißt **Claude-Ampel**, läuft im eigenen Benutzerkonto und braucht
+keine Administratorrechte. Sie startet dieselbe `Ampel starten.vbs` wie die
+Desktop-Verknüpfung, also ohne Konsolenfenster, und ist auch im Akkubetrieb
+erlaubt. War der Rechner bei der Anmeldung noch beschäftigt, wird der Start
+nachgeholt statt ausgelassen.
+
+Zu sehen ist der Eintrag außerdem in der **Aufgabenplanung** (`taskschd.msc`)
+unter *Aufgabenplanungsbibliothek*. Von Hand entfernen geht dort ebenso —
+`autostart.cmd aus` ist nur der kürzere Weg.
+
+> Startet die Ampel bereits im Hintergrund, tut ein zusätzlicher Doppelklick
+> auf die Verknüpfung nichts: der Server sieht seinen Port belegt und der
+> Wächter gibt auf, das Overlay lässt nur eine Spalte zu.
 
 ## Eine Kachel pro Projekt, Untersessions darin
 
@@ -133,6 +156,9 @@ Einmal antippen, Erlaubnis erteilen — danach kommt eine Push-Nachricht, sobald
 eine Session auf Rot springt, auch bei geschlossenem Browser.
 
 - Gemeldet wird nur der **Übergang** nach Rot, nicht jeder Takt.
+- Ebenso kommt eine Meldung, wenn das **Fünf-Stunden-Fenster 90 % erreicht** —
+  einmal je Fenster, mit der verbleibenden Zeit bis zur Zurücksetzung. Die
+  Schwelle ist dieselbe, ab der der Balken rot wird.
 - Pro Session gilt danach 5 Minuten Ruhe, damit eine flackernde Session nicht dauerklingelt.
 - **iPhone:** Web-Push funktioniert erst, wenn die Seite über *Teilen → Zum Home-Bildschirm*
   installiert wurde. Danach die App vom Home-Bildschirm öffnen und dort den Knopf antippen.
