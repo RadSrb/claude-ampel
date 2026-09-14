@@ -110,6 +110,19 @@ function fensterBauen() {
   fenster.setAlwaysOnTop(true, 'floating');
   fenster.setMenu(null);
 
+  // Windows nimmt einem fremden Fenster das Topmost-Flag weg, sobald ein
+  // Programm exklusives Vollbild belegt, der Sperrbildschirm kommt, ein
+  // Monitor aufwacht oder die Aufloesung wechselt. Electron holt es nicht
+  // von selbst zurueck -- das Overlay lag danach dauerhaft hinten, bis der
+  // Prozess neu startete. Der Umweg ueber false ist noetig: ein zweites
+  // true ist fuer Electron keine Aenderung und bleibt wirkungslos.
+  const vornBleiben = setInterval(() => {
+    if (fenster.isDestroyed()) return;
+    fenster.setAlwaysOnTop(false);
+    fenster.setAlwaysOnTop(true, 'floating');
+  }, 5000);
+  fenster.on('closed', () => clearInterval(vornBleiben));
+
   fenster.once('ready-to-show', () => fenster.showInactive());
 
   let merker = null;
