@@ -122,6 +122,17 @@ async function overlayStarten() {
 }
 
 async function overlayBeenden() {
+  // Der Suchspeicher haelt den Befund bis zu drei Sekunden fest. Ohne das
+  // Vergessen meldet er gleich danach noch das eben beendete Overlay -- und
+  // overlayStarten() steigt wortlos aus, weil angeblich schon eins laeuft.
+  try {
+    return await overlayWirklichBeenden();
+  } finally {
+    fremdesOverlay.vergessen();
+  }
+}
+
+async function overlayWirklichBeenden() {
   // Ein Overlay, das wir nicht selbst gestartet haben, kennt nur seine PID.
   if (!overlayLaeuft()) {
     const pid = await overlayPid();
