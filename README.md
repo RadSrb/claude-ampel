@@ -97,10 +97,12 @@ Gruppiert wird über den **Pfad**, nicht den Ordnernamen — `c:\Projekte\Demo` 
 Pro Projekt eine Zeile: Farbpunkt, Name, Dauer; rote Zeilen sind hinterlegt.
 Eine Zahl hinter dem Namen bedeutet mehrere Sessions in diesem Projekt.
 
-- **Klick auf eine Zeile** holt das zugehörige VS-Code-Fenster nach vorn.
+- **Klick auf eine Zeile** holt das zugehörige VS-Code-Fenster nach vorn und
+  setzt den Cursor gleich ins Claude-Chatfeld — du kannst sofort lostippen.
   Zuerst wird das genau zugeordnete Fenster angesprochen; gibt es keins,
   übernimmt `code --reuse-window <ordner>` — der Sprung klappt also immer,
-  solange VS Code auf dem `PATH` liegt.
+  solange VS Code auf dem `PATH` liegt. Voraussetzung für den Schreibfokus ist
+  die [F13-Belegung](#cursor-landet-im-chatfeld-f13).
 - **Unten das Nutzungslimit**: 5-Stunden-Fenster, Woche und modellbezogene
   Wochenlimits als Balken. Beim Darüberfahren steht der Reset-Zeitpunkt.
   Ab 75 % wird der Balken gelb, ab 90 % rot.
@@ -118,6 +120,25 @@ Stufen flackern dort.
 > Läuft `overlay.cmd` aus einem VS-Code-Terminal, muss `ELECTRON_RUN_AS_NODE`
 > geleert werden, sonst startet Electron als reines Node und öffnet kein Fenster.
 > `overlay.cmd` erledigt das selbst.
+
+### Cursor landet im Chatfeld (F13)
+
+Der **Fenster**-Knopf holt das Fenster nach vorn — den Schreibfokus lässt Windows
+dabei aber dort, wo er zuletzt war (Editor, Terminal, Explorer). Damit der Cursor
+stattdessen im Claude-Chatfeld blinkt, schickt die Ampel zusätzlich einen
+**F13**-Tastendruck. F13 gibt es auf keiner normalen Tastatur, der Druck
+kollidiert also mit nichts.
+
+Diese Taste muss VS Code einmal zugeordnet bekommen — in
+`%APPDATA%\Code\User\keybindings.json` (VS Code: *Tastenkombinationen öffnen
+(JSON)*):
+
+```json
+{ "key": "f13", "command": "claude-vscode.focus" }
+```
+
+Ohne diesen Eintrag springt das Fenster trotzdem nach vorn, der Cursor bleibt
+nur stehen, wo er war.
 
 ## Einstellungen
 

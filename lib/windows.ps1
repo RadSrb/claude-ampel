@@ -2,7 +2,8 @@
 # und kann eines davon in den Vordergrund holen.
 #
 #   powershell -File windows.ps1 list
-#   powershell -File windows.ps1 focus <hwnd>
+#   powershell -File windows.ps1 focus <hwnd>   (holt das Fenster vor und setzt den Schreibfokus)
+#   powershell -File windows.ps1 typeforeground  (wartet auf einen Editor im Vordergrund und setzt dort den Schreibfokus)
 #
 # Get-Process liefert pro Prozess nur EIN MainWindowHandle -- VS Code betreibt
 # aber mehrere Fenster je Prozess. Deshalb EnumWindows ueber die Win32-API.
@@ -41,8 +42,15 @@ public class AmpelWin {
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+  [DllImport("user32.dll")] static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
   const int SW_RESTORE = 9;
+
+  // F13 gibt es auf keiner normalen Tastatur -- deshalb kann dieser Druck
+  // niemals von Hand ausgeloest werden und kollidiert mit nichts.
+  const byte VK_F13 = 0x7C;
+  const uint KEYEVENTF_KEYUP = 0x0002;
 
   public class Win { public long Hwnd; public uint Pid; public string Title; }
 
@@ -74,14 +82,49 @@ public class AmpelWin {
     if (fgThread != ownThread) AttachThreadInput(ownThread, fgThread, false);
     return ok;
   }
+
+  // Holt das Fenster nach vorn UND setzt den Schreibfokus ins Claude-Chatfeld.
+  //
+  // SetForegroundWindow aktiviert nur das Fenster -- der Tastaturfokus bleibt,
+  // wo er zuletzt war (Editor, Explorer, Terminal). Deshalb zusaetzlich F13,
+  // das in keybindings.json auf "claude-vscode.focus" liegt.
+  //
+  // Der Druck geht erst raus, wenn das Fenster wirklich vorn ist. Sonst
+  // bekaeme ihn das Programm, das gerade noch den Vordergrund hatte.
+  public static bool FocusAndType(IntPtr hWnd) {
+    bool ok = Focus(hWnd);
+    for (int i = 0; i < 25 && GetForegroundWindow() != hWnd; i++) System.Threading.Thread.Sleep(20);
+    if (GetForegroundWindow() != hWnd) return ok;
+    SendFocusKey();
+    return ok;
+  }
+
+  public static void SendFocusKey() {
+    // VS Code braucht nach dem Aktivieren einen Moment, bis es Tasten annimmt.
+    System.Threading.Thread.Sleep(60);
+    byte scan = (byte)MapVirtualKey(VK_F13, 0);
+    keybd_event(VK_F13, scan, 0, UIntPtr.Zero);
+    keybd_event(VK_F13, scan, KEYEVENTF_KEYUP, UIntPtr.Zero);
+  }
+
+  public static long ForegroundPid() {
+    uint pid;
+    GetWindowThreadProcessId(GetForegroundWindow(), out pid);
+    return pid;
+  }
 }
 '@
 
-if ($Action -eq 'list') {
-  $editorPids = @{}
+function Get-EditorPids {
+  $map = @{}
   Get-Process -ErrorAction SilentlyContinue |
     Where-Object { $_.ProcessName -in 'Code', 'Code - Insiders', 'Cursor', 'VSCodium', 'windsurf' } |
-    ForEach-Object { $editorPids[[uint32]$_.Id] = $_.ProcessName }
+    ForEach-Object { $map[[uint32]$_.Id] = $_.ProcessName }
+  return $map
+}
+
+if ($Action -eq 'list') {
+  $editorPids = Get-EditorPids
 
   $result = [AmpelWin]::List() |
     Where-Object { $editorPids.ContainsKey($_.Pid) } |
@@ -101,8 +144,28 @@ if ($Action -eq 'list') {
 
 if ($Action -eq 'focus') {
   if (-not $Hwnd) { Write-Output '{"ok":false,"error":"kein hwnd"}'; exit 1 }
-  $ok = [AmpelWin]::Focus([IntPtr][long]$Hwnd)
+  $ok = [AmpelWin]::FocusAndType([IntPtr][long]$Hwnd)
   ConvertTo-Json -InputObject @{ ok = [bool]$ok } -Compress
+  exit 0
+}
+
+# Fuer den Rueckfallweg: `code --reuse-window` kehrt sofort zurueck, das Fenster
+# kommt erst danach nach vorn. Deshalb wird hier gewartet, bis wirklich ein
+# Editor den Vordergrund hat -- und nur dann F13 geschickt. Ohne diese Pruefung
+# bekaeme den Druck irgendein anderes Programm.
+if ($Action -eq 'typeforeground') {
+  $editorPids = Get-EditorPids
+  $vorn = $false
+  for ($i = 0; $i -lt 20; $i++) {
+    if ($editorPids.ContainsKey([uint32][AmpelWin]::ForegroundPid())) { $vorn = $true; break }
+    Start-Sleep -Milliseconds 100
+  }
+  if (-not $vorn) {
+    ConvertTo-Json -InputObject @{ ok = $false; error = 'kein editor im vordergrund' } -Compress
+    exit 0
+  }
+  [AmpelWin]::SendFocusKey()
+  ConvertTo-Json -InputObject @{ ok = $true } -Compress
   exit 0
 }
 
