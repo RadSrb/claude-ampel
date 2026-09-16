@@ -127,10 +127,18 @@
         font-size: 10px;
         color: var(--muted);
         background: rgba(255, 255, 255, 0.09);
+        border: none;
+        font-family: inherit;
         border-radius: 9px;
         padding: 0 5px;
         flex: none;
+        cursor: pointer;
       }
+      .anzahl:hover { color: var(--text); background: rgba(255, 255, 255, 0.18); }
+
+      /* Unterzeilen: jede Session eines Fensters mit eigenem Punkt. */
+      .zeile.unter { padding: 4px 10px 4px 26px; font-size: 11.5px; }
+      .zeile.unter .name { color: var(--muted); }
       .zeit {
         color: var(--muted);
         font-variant-numeric: tabular-nums;
@@ -185,6 +193,24 @@
       const limitFeld = document.getElementById('limit');
       let snapshot = { projects: [], sessions: [] };
       let verbunden = false;
+
+      const LABEL = {
+        limit: 'Limit',
+        attention: 'braucht dich',
+        question: 'fragt dich',
+        stalled: 'steht',
+        running: 'läuft',
+        done: 'fertig',
+        unknown: 'unbekannt',
+      };
+
+      // Welche Projektzeilen ihre Sessions zeigen -- bleibt ueber Neuladen erhalten.
+      let aufgeklappt = new Set();
+      try {
+        aufgeklappt = new Set(JSON.parse(localStorage.getItem('aufgeklappt') ?? '[]'));
+      } catch {
+        /* leer anfangen */
+      }
 
       function dauer(ms) {
         const s = Math.floor(ms / 1000);
@@ -291,7 +317,24 @@
             // Anspringbar ist die dringendste Session der Gruppe -- das ist die,
             // wegen der man ueberhaupt hinschaut.
             const ziel = g.sessions[0];
-            const mehr = g.sessions.length > 1 ? `<span class="anzahl">${g.sessions.length}</span>` : '';
+            const offen = g.sessions.length > 1 && aufgeklappt.has(g.key);
+            const mehr =
+              g.sessions.length > 1
+                ? `<button class="anzahl" data-gruppe="${esc(g.key)}" title="${offen ? 'Sessions zuklappen' : 'Alle Sessions zeigen'}">${offen ? '▾' : '▸'}${g.sessions.length}</button>`
+                : '';
+            const unter = offen
+              ? g.sessions
+                  .map(
+                    (s, i) => `<div class="zeile unter ${s.color === 'red' ? 'rot' : ''}" data-session="${esc(s.sessionId)}"
+                      title="${esc(s.lastText ?? s.title ?? '')}">
+                      <i class="dot ${s.color}"></i>
+                      <span class="name">Session ${i + 1} · ${LABEL[s.status] ?? s.status}</span>
+                      ${ring(s.kontext, s.verdichtet)}
+                      <span class="zeit" data-since="${s.since}">${dauer(now - s.since)}</span>
+                    </div>`,
+                  )
+                  .join('')
+              : '';
             const portListe = g.ports ?? [];
             const portWarnung =
               portListe.length > 1
@@ -312,7 +355,7 @@
               ${ring(ziel.kontext, ziel.verdichtet)}
               ${mehr}
               <span class="zeit" data-since="${g.since}">${dauer(now - g.since)}</span>
-            </div>`;
+            </div>${unter}`;
           })
           .join('');
       }
@@ -328,6 +371,18 @@
         // Ein Klick auf den Port oeffnet die Seite -- er darf nicht zusaetzlich
         // das VS-Code-Fenster nach vorn holen.
         if (ev.target.closest('a')) return;
+        const knopf = ev.target.closest('[data-gruppe]');
+        if (knopf) {
+          const key = knopf.dataset.gruppe;
+          if (!aufgeklappt.delete(key)) aufgeklappt.add(key);
+          try {
+            localStorage.setItem('aufgeklappt', JSON.stringify([...aufgeklappt]));
+          } catch {
+            /* dann eben nur bis zum Neuladen */
+          }
+          render();
+          return;
+        }
         const zeile = ev.target.closest('.zeile');
         if (!zeile) return;
         fetch('/api/focus', {

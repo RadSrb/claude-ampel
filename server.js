@@ -206,11 +206,9 @@ async function tick() {
   // und deshalb jeweils zwischengespeichert.
   const [ports, windows, limit] = await Promise.all([listPorts(), listWindows(), nutzung()]);
 
-  // Verwaiste Sessions (Transkript weggeraeumt, kein Hook, lange her) werden
-  // nicht angezeigt -- sie doppeln sonst nur ihr lebendiges Geschwister im
-  // selben Projekt, ohne eine einzige Information beizutragen.
-  const sichtbar = rows.filter((r) => !r.orphan);
-  const verwaist = rows.filter((r) => r.orphan);
+  // Auch graue Sessions ohne Transkript bleiben stehen, solange ihr Prozess
+  // lebt -- der Scanner liefert ohnehin nur lebende Prozesse.
+  const sichtbar = rows;
 
   const fenster = assignWindows(sichtbar, windows);
   for (const row of sichtbar) {
@@ -225,7 +223,6 @@ async function tick() {
     projects: groupByProject(sichtbar),
     limit,
     sessions: sichtbar,
-    orphans: verwaist.map((r) => ({ folder: r.folder, pid: r.pid, startedAt: r.startedAt })),
     otherPorts: unmatchedPorts(
       ports,
       sichtbar.map((r) => r.cwd).filter(Boolean),
