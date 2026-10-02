@@ -239,6 +239,12 @@ async function tick() {
     });
   }
 
+  for (const session of push.neuFertig(sichtbar)) {
+    push.meldenFertig(session).catch(() => {
+      /* dito */
+    });
+  }
+
   // Vorwarnung, bevor das Fuenf-Stunden-Fenster zu ist. Einmal je Fenster --
   // die Entscheidung darueber trifft der Push-Dienst.
   const knapp = push.neuKnapp(limit);
