@@ -25,7 +25,8 @@ switch ($Was) {
         }
 
         # wscript.exe statt cscript.exe -- nur so bleibt die Konsole aus.
-        $aktion = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"{0}"' -f $Ziel) -WorkingDirectory $Basis
+        # /auto: ein von Hand geschlossenes Overlay nicht wieder oeffnen.
+        $aktion = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"{0}" /auto' -f $Ziel) -WorkingDirectory $Basis
         $ausloeser = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 
         # Zweiter Ausloeser: alle zwei Minuten nachsehen. Der Waechter prueft

@@ -392,7 +392,12 @@
         }).catch(() => {});
       });
 
-      document.getElementById('zu').onclick = () => window.close();
+      // Das Overlay erkennt #schliessen und merkt sich, dass es zu bleiben soll.
+      // window.close() nur als Rueckfall, falls die Seite woanders offen ist.
+      document.getElementById('zu').onclick = () => {
+        location.hash = 'schliessen';
+        setTimeout(() => window.close(), 1500);
+      };
       document.getElementById('gross').onclick = () => {
         fetch('/api/open-dashboard', { method: 'POST' }).catch(() => {});
       };

@@ -20,6 +20,7 @@ import { nutzung } from './lib/usage.js';
 import { loadOrCreateSecrets, tokenGleich } from './lib/secrets.js';
 import { PushDienst } from './lib/push.js';
 import { overlaySucher } from './lib/overlay.js';
+import { overlaySchliessenMerken, overlayFreigeben } from './lib/overlay-aus.cjs';
 import { CODE_PORT_BELEGT } from './lib/watchdog-regel.js';
 import { FELDER, oeffentlich, pruefen, sichern, brauchtNeustart } from './lib/settings.js';
 
@@ -98,6 +99,7 @@ function umgebungOhneNodeModus() {
 }
 
 async function overlayStarten() {
+  overlayFreigeben(HERE);
   // Auch ein fremd gestartetes zaehlt -- sonst startet der Knopf ein zweites,
   // das die Einzelinstanz-Sperre sofort wieder beendet.
   if (await overlayPid()) return true;
@@ -122,6 +124,8 @@ async function overlayStarten() {
 }
 
 async function overlayBeenden() {
+  // Vor dem Beenden merken -- sonst holt der Waechter es in Sekunden zurueck.
+  overlaySchliessenMerken(HERE);
   // Der Suchspeicher haelt den Befund bis zu drei Sekunden fest. Ohne das
   // Vergessen meldet er gleich danach noch das eben beendete Overlay -- und
   // overlayStarten() steigt wortlos aus, weil angeblich schon eins laeuft.

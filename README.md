@@ -111,6 +111,10 @@ Eine Zahl hinter dem Namen bedeutet mehrere Sessions in diesem Projekt.
   auf einem inzwischen abgesteckten Monitor, springt das Fenster zurück an den
   rechten Rand des Hauptbildschirms.
 - **⧉** öffnet das große Dashboard im Standardbrowser, **✕** schließt das Overlay.
+  Geschlossen bleibt es zu: der Wächter holt nur ein **abgestürztes** Overlay
+  zurück. Wieder öffnen über die Desktop-Verknüpfung bzw. `Ampel starten.vbs`
+  oder *Einstellungen → Overlay starten*. Gemerkt wird das in `overlay/geschlossen`;
+  der Autostart (`/auto`) lässt ein geschlossenes Overlay zu.
 - Kein Eintrag in der Taskleiste, kein Fokusklau beim Start.
 
 Setzt voraus, dass `start.cmd` bereits läuft. Die Fensterebene ist bewusst
