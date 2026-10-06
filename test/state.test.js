@@ -401,6 +401,35 @@ test('ein Subagent, der vor dem Turn-Ende zuletzt schrieb, haelt nichts gelb', (
   assert.equal(s.status, 'done');
 });
 
+test('ein Hintergrund-Agent, der auf einen langen Befehl wartet, haelt gelb statt rot', () => {
+  // WorkExpert 06.10. 10:26: der Agent wartete in einer until-sleep-Schleife
+  // auf den Testlauf und schrieb 5 Minuten nichts -- die Kachel kippte auf rot.
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 10 * MINUTE).toISOString() };
+  const agent = Date.now() - 8 * MINUTE;
+  const [s] = store.update([sess({ subagentMtime: agent, subagentBefehlMtime: agent, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'Hintergrund-Agenten');
+});
+
+test('auch ein wartender Befehl gilt nach einer halben Stunde nicht mehr als Arbeit', () => {
+  const store = new StateStore(CFG);
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 60 * MINUTE).toISOString() };
+  const agent = Date.now() - 35 * MINUTE;
+  const [s] = store.update([sess({ subagentMtime: agent, subagentBefehlMtime: agent, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'done');
+});
+
+test('ein Subagent im langen Befehl laesst auch einen offenen Turn nicht auf rot kippen', () => {
+  const store = new StateStore(CFG);
+  const alt = new Date(Date.now() - 9 * MINUTE);
+  const agent = { ...turnTool, toolName: 'Agent' };
+  const befehl = Date.now() - 8 * MINUTE;
+  const [s] = store.update([sess({ subagentMtime: befehl, subagentBefehlMtime: befehl, tail: tail({ lastTurn: agent, mtime: alt }) })]);
+  assert.equal(s.status, 'running');
+});
+
 test('ein seit Langem stiller Hintergrund-Agent faerbt eine fertige Session nicht gelb', () => {
   const store = new StateStore(CFG);
   const ende = { ...turnDone, timestamp: new Date(Date.now() - 20 * MINUTE).toISOString() };

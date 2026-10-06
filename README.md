@@ -270,7 +270,12 @@ Transkript als vergessen gilt.
   `<sessionId>/subagents/` zählt als Lebenszeichen: Während ein Subagent
   arbeitet, schweigt das Haupt-Transkript, und die Session ist trotzdem nicht
   „steht“. Schreibt ein Agent **nach** dem Turn-Ende weiter (`run_in_background`),
-  bleibt die Kachel gelb mit dem Hinweis *Hintergrund-Agenten*.
+  bleibt die Kachel gelb mit dem Hinweis *Hintergrund-Agenten*. Wartet ein
+  Subagent auf einen langen Befehl (Testlauf, Build), schreibt er minutenlang
+  nichts — das gilt bis zu 30 Minuten als Arbeit, nicht als „steht“.
+  Nachgereichte `task-notification`-Zeilen zählen nicht als Gesprächsschritt:
+  Claude Code schreibt sie auch für längst verarbeitete Agenten, ohne einen
+  Turn zu starten.
 - **Grün ist nicht endgültig**: Meldet sich ein Hintergrund-Agent zurück, arbeitet
   Claude ohne neue Eingabe weiter — dafür gibt es keinen Hook. Steht im Transkript
   ein Gesprächsschritt, der jünger ist als der letzte `Stop`, gilt die Session

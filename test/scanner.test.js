@@ -54,6 +54,62 @@ test('readTranscriptTail erkennt einen beendeten Turn', () => {
   assert.ok(tail.mtime instanceof Date);
 });
 
+test('eine nachgereichte task-notification ist kein neuer Gespraechsschritt', () => {
+  // Claude Code schreibt die Meldung eines schon verarbeiteten Agenten nach
+  // dem Turn-Ende ins Transkript, ohne einen neuen Turn zu starten.
+  const root = makeFixture();
+  const file = writeTranscript(root, 'c--x', 's-notif', [
+    { type: 'user', message: { role: 'user', content: 'bau das' } },
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Warte auf den Agenten.' }] } },
+    { type: 'user', message: { role: 'user', content: '<task-notification> <task-id>a1</task-id> <status>completed</status> </task-notification>' } },
+  ]);
+  const tail = readTranscriptTail(file);
+  assert.equal(tail.lastTurn.type, 'assistant');
+  assert.equal(tail.lastTurn.stopReason, 'end_turn');
+});
+
+test('scan erkennt einen Hintergrund-Agenten, der auf einen langen Befehl wartet', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-befehl', cwd: 'c:\\Projekte\\Agenten', startedAt: 1 });
+  writeTranscript(root, 'c--Projekte-Agenten', 's-befehl', [
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Agent laeuft.' }] } },
+  ]);
+  const dir = path.join(root, 'projects', 'c--Projekte-Agenten', 's-befehl', 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  const wartet = path.join(dir, 'agent-a.jsonl');
+  const fertig = path.join(dir, 'agent-b.jsonl');
+  fs.writeFileSync(
+    wartet,
+    // So steht es echt in subagents/: stop_reason null am offenen Aufruf.
+    JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: null, content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } }) + '\n',
+  );
+  fs.writeFileSync(
+    fertig,
+    JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }) + '\n',
+  );
+  const vorhin = new Date(Date.now() - 8 * 60 * 1000);
+  fs.utimesSync(wartet, vorhin, vorhin);
+
+  const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(Math.round(s.subagentBefehlMtime / 1000), Math.round(vorhin.getTime() / 1000));
+});
+
+test('ohne wartenden Befehl bleibt subagentBefehlMtime leer', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-ohne', cwd: 'c:\\Projekte\\Agenten', startedAt: 1 });
+  writeTranscript(root, 'c--Projekte-Agenten', 's-ohne', [
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Fertig.' }] } },
+  ]);
+  const dir = path.join(root, 'projects', 'c--Projekte-Agenten', 's-ohne', 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'agent-a.jsonl'),
+    JSON.stringify({ type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Bericht' }] } }) + '\n',
+  );
+  const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(s.subagentBefehlMtime, null);
+});
+
 test('readTranscriptTail erkennt ein offenes Auswahl-Widget, auch neben anderen Werkzeugen', () => {
   const root = makeFixture();
   const file = writeTranscript(root, 'c--x', 's-widget', [
