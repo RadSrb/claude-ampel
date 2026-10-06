@@ -8,7 +8,7 @@ am PC und am Handy.
 | 🔴 rot | braucht dich | Claude wartet auf eine Freigabe oder Antwort (Notification-Hook) |
 | 🔴 rot | fragt dich | Der Turn ist zu Ende, endet aber mit einer **Frage oder einem Vorschlag** — oder ein Auswahl-Widget bzw. eine Plan-Freigabe steht offen |
 | 🔴 rot | steht | Läuft angeblich, rührt sich aber seit 5 Minuten nicht |
-| 🟡 gelb | läuft | Arbeitet gerade — auch wenn der Chat schon fertig aussieht, aber **Hintergrund-Agenten** noch schreiben |
+| 🟡 gelb | läuft | Arbeitet gerade — auch wenn der Chat schon fertig aussieht, aber **Hintergrund-Agenten** noch schreiben oder ein **Hintergrund-Befehl** noch läuft |
 | 🟢 grün | fertig | Turn abgeschlossen, wartet auf einen neuen Auftrag |
 | ⚪ grau | unbekannt | Kein Transkript vorhanden |
 
@@ -273,6 +273,16 @@ Transkript als vergessen gilt.
   bleibt die Kachel gelb mit dem Hinweis *Hintergrund-Agenten*. Wartet ein
   Subagent auf einen langen Befehl (Testlauf, Build), schreibt er minutenlang
   nichts — das gilt bis zu 30 Minuten als Arbeit, nicht als „steht“.
+  Hintergrund-**Befehle** (`Bash` mit `run_in_background`, `Monitor`) hinterlassen
+  dagegen gar keine Spur — ein Massenlauf schreibt in seine eigene Datei.
+  `lib/hintergrund.js` führt deshalb über das ganze Transkript Buch: Start ist
+  `backgroundTaskId` bzw. `taskId` im Werkzeugergebnis, Ende eine
+  `task-notification` mit `<status>` oder ein `TaskStop`. Solange einer offen
+  ist, bleibt die Kachel gelb mit dem Hinweis *Hintergrund-Befehl*. Nicht
+  gezählt werden Dev-Server, Vorschauen und Tunnel (die laufen bis zum
+  Session-Ende), Befehle aus einem früheren Prozess der Session, Monitore nach
+  ihrem Ablauf und Befehle, die älter als zwei Stunden sind — bei einzelnen
+  fehlt im Transkript die Abschlussmeldung.
   Nachgereichte `task-notification`-Zeilen zählen nicht als Gesprächsschritt:
   Claude Code schreibt sie auch für längst verarbeitete Agenten, ohne einen
   Turn zu starten.

@@ -444,6 +444,36 @@ test('eine Frage bleibt rot, auch wenn Hintergrund-Agenten arbeiten', () => {
   assert.equal(s.status, 'question');
 });
 
+test('ein laufender Hintergrund-Befehl haelt eine Session mit beendetem Turn gelb', () => {
+  // Agenten 06.10.: "Ich warte weiter auf den Massenlauf." -- der Turn war zu
+  // Ende, die Pipeline lief als Hintergrund-Befehl ohne Subagenten weiter,
+  // und die Kachel stand eine halbe Stunde gruen.
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 6 * MINUTE).toISOString() };
+  const lauf = { id: 'b2yzsdyji', art: 'befehl', start: Date.now() - 30 * MINUTE, beschreibung: 'Pipeline' };
+  const [s] = store.update([
+    sess({ hintergrundBefehle: [lauf], tail: tail({ lastTurn: ende, mtime: new Date(Date.now() - 6 * MINUTE) }) }),
+  ]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'Hintergrund-Befehl');
+});
+
+test('ohne offenen Hintergrund-Befehl bleibt die fertige Session gruen', () => {
+  const store = new StateStore(CFG);
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - MINUTE).toISOString() };
+  const [s] = store.update([sess({ hintergrundBefehle: [], tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'done');
+});
+
+test('eine Frage bleibt rot, auch wenn ein Hintergrund-Befehl laeuft', () => {
+  const store = new StateStore(CFG);
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - MINUTE).toISOString() };
+  const lauf = { id: 'b1', art: 'befehl', start: Date.now() - 5 * MINUTE };
+  const [s] = store.update([sess({ hintergrundBefehle: [lauf], tail: tail({ lastTurn: ende, frage: true }) })]);
+  assert.equal(s.status, 'question');
+});
+
 test('ein seit Langem stiller Subagent kippt trotzdem auf rot', () => {
   const store = new StateStore(CFG);
   const alt = new Date(Date.now() - 400 * 1000);

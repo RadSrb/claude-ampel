@@ -25,6 +25,38 @@ function writeTranscript(root, slug, sessionId, lines) {
   return file;
 }
 
+test('scan meldet offene Hintergrund-Befehle und sieht ihr spaeteres Ende', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-bg', cwd: 'c:\\Projekte\\Agenten', startedAt: 1 });
+  const jetzt = new Date().toISOString();
+  const file = writeTranscript(root, 'c--Projekte-Agenten', 's-bg', [
+    {
+      type: 'assistant',
+      timestamp: jetzt,
+      message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'bash pipeline.sh', description: 'Massenlauf', run_in_background: true } }] },
+    },
+    {
+      type: 'user',
+      timestamp: jetzt,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'Command running in background with ID: b1.' }] },
+      toolUseResult: { backgroundTaskId: 'b1' },
+    },
+    { type: 'assistant', timestamp: jetzt, message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Ich warte auf den Massenlauf.' }] } },
+  ]);
+
+  let [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(s.hintergrundBefehle.length, 1);
+  assert.equal(s.hintergrundBefehle[0].beschreibung, 'Massenlauf');
+
+  // Nur das Angehaengte wird nachgelesen -- das Ende muss trotzdem ankommen.
+  fs.appendFileSync(
+    file,
+    JSON.stringify({ type: 'queue-operation', operation: 'enqueue', content: '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>' }) + '\n',
+  );
+  [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.deepEqual(s.hintergrundBefehle, []);
+});
+
 test('slugForCwd bildet die Ordnernamen von Claude Code nach', () => {
   assert.equal(slugForCwd('c:\\Projekte\\Agenten'), 'c--Projekte-Agenten');
   assert.equal(slugForCwd('C:\\Users\\Alexander'), 'C--Users-Alexander');
