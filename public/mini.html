@@ -328,7 +328,7 @@
                     (s, i) => `<div class="zeile unter ${s.color === 'red' ? 'rot' : ''}" data-session="${esc(s.sessionId)}"
                       title="${esc(s.lastText ?? s.title ?? '')}">
                       <i class="dot ${s.color}"></i>
-                      <span class="name">Session ${i + 1} · ${LABEL[s.status] ?? s.status}</span>
+                      <span class="name">${esc(s.title ?? s.name ?? `Session ${i + 1}`)} · ${LABEL[s.status] ?? s.status}</span>
                       ${ring(s.kontext, s.verdichtet)}
                       <span class="zeit" data-since="${s.since}">${dauer(now - s.since)}</span>
                     </div>`,
@@ -363,7 +363,10 @@
       setInterval(() => {
         const now = Date.now();
         for (const el of document.querySelectorAll('[data-since]')) {
-          el.textContent = dauer(now - Number(el.dataset.since));
+          // Nur schreiben, wenn sich die Anzeige aendert: ab einer Minute ist
+          // das einmal pro Minute statt jede Sekunde ein Neuzeichnen.
+          const text = dauer(now - Number(el.dataset.since));
+          if (el.textContent !== text) el.textContent = text;
         }
       }, 1000);
 

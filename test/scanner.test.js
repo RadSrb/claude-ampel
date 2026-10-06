@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { slugForCwd, readTranscriptTail, scan } from '../lib/scanner.js';
+import { slugForCwd, readTranscriptTail, scan, cacheStand, findTranscript } from '../lib/scanner.js';
 
 function makeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ampel-test-'));
@@ -448,4 +448,108 @@ test('scan liefert eine Session ohne Transkript ohne zu werfen', () => {
   const [s] = scan({ claudeDir: root, livePids: new Set([555]) });
   assert.equal(s.transcriptPath, null);
   assert.equal(s.tail, null);
+});
+
+test('scan vergisst Transkript- und Tail-Zwischenspeicher beendeter Sessions', () => {
+  const root = makeFixture();
+  const zeile = { type: 'assistant', message: { role: 'assistant', content: 'ok', stop_reason: 'end_turn' } };
+  writeSession(root, { sessionId: 'lebt', pid: 5001, cwd: 'c:\\a' });
+  writeSession(root, { sessionId: 'weg', pid: 5002, cwd: 'c:\\b' });
+  writeTranscript(root, 'c--a', 'lebt', [zeile]);
+  writeTranscript(root, 'c--b', 'weg', [zeile]);
+
+  scan({ claudeDir: root, livePids: new Set([5001, 5002]) });
+  assert.equal(cacheStand().transkripte, 2);
+  assert.equal(cacheStand().tails, 2);
+
+  // Session "weg" ist beendet: ihr Prozess taucht nicht mehr auf.
+  scan({ claudeDir: root, livePids: new Set([5001]) });
+  assert.equal(cacheStand().transkripte, 1);
+  assert.equal(cacheStand().tails, 1);
+});
+
+test('findTranscript sucht nicht bei jedem Takt alle Projektordner ab', () => {
+  const root = makeFixture();
+  const zeile = { type: 'user', message: { role: 'user', content: 'hallo' } };
+  const t0 = 1_000_000;
+
+  // Noch kein Transkript: die grosse Suche laeuft einmal und findet nichts.
+  assert.equal(findTranscript(root, 'c:\\a', 'spaet', t0), null);
+
+  // Taucht es unter einem fremden Ordnernamen auf, findet es erst die
+  // naechste grosse Suche -- nicht der Takt zwei Sekunden spaeter.
+  const fremd = writeTranscript(root, 'ganz-anderer-slug', 'spaet', [zeile]);
+  assert.equal(findTranscript(root, 'c:\\a', 'spaet', t0 + 2000), null);
+  assert.equal(findTranscript(root, 'c:\\a', 'spaet', t0 + 31_000), fremd);
+});
+
+test('findTranscript findet das Transkript am ueblichen Pfad sofort', () => {
+  const root = makeFixture();
+  const zeile = { type: 'user', message: { role: 'user', content: 'hallo' } };
+  const t0 = 1_000_000;
+  assert.equal(findTranscript(root, 'c:\\a', 'frisch', t0), null);
+
+  // Der Normalfall einer frisch gestarteten Session: keine Wartezeit.
+  const ueblich = writeTranscript(root, 'c--a', 'frisch', [zeile]);
+  assert.equal(findTranscript(root, 'c:\\a', 'frisch', t0 + 2000), ueblich);
+});
+
+test('scan sieht die Aktivitaet eines laufenden Subagenten', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-agent', cwd: 'c:\Projekte\Agenten', startedAt: 1 });
+  const file = writeTranscript(root, 'c--Projekte-Agenten', 's-agent', [
+    {
+      type: 'assistant',
+      message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'Agent', input: {} }] },
+    },
+  ]);
+  const alt = new Date(Date.now() - 600 * 1000);
+  fs.utimesSync(file, alt, alt);
+
+  // Noch kein Subagent-Ordner: keine Zusatzaktivitaet.
+  let [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(s.subagentMtime, null);
+
+  const dir = path.join(root, 'projects', 'c--Projekte-Agenten', 's-agent', 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  const frisch = new Date(Date.now() - 3000);
+  const aelter = new Date(Date.now() - 90 * 1000);
+  fs.writeFileSync(path.join(dir, 'agent-a.jsonl'), '{}\n');
+  fs.writeFileSync(path.join(dir, 'agent-b.jsonl'), '{}\n');
+  fs.writeFileSync(path.join(dir, 'agent-b.meta.json'), '{}');
+  fs.utimesSync(path.join(dir, 'agent-a.jsonl'), aelter, aelter);
+  fs.utimesSync(path.join(dir, 'agent-b.jsonl'), frisch, frisch);
+
+  [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(Math.round(s.subagentMtime / 1000), Math.round(frisch.getTime() / 1000));
+});
+
+test('scan fragt den Subagent-Ordner nicht ab, wenn der Turn beendet ist', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-fertig', cwd: 'c:\Projekte\Agenten', startedAt: 1 });
+  writeTranscript(root, 'c--Projekte-Agenten', 's-fertig', [
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Fertig.' }] } },
+  ]);
+  const dir = path.join(root, 'projects', 'c--Projekte-Agenten', 's-fertig', 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'agent-a.jsonl'), '{}\n');
+
+  const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(s.subagentMtime, null);
+});
+
+test('scan sieht Subagenten auch, wenn zuletzt eine Nachricht kam statt eines Werkzeugaufrufs', () => {
+  // Eine Hintergrund-Meldung (task-notification) steht als user-Zeile im
+  // Transkript; der Haupt-Thread arbeitet danach ueber einen Subagenten weiter.
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-meldung', cwd: 'c:\Projekte\Agenten', startedAt: 1 });
+  writeTranscript(root, 'c--Projekte-Agenten', 's-meldung', [
+    { type: 'user', message: { role: 'user', content: '<task-notification>fertig</task-notification>' } },
+  ]);
+  const dir = path.join(root, 'projects', 'c--Projekte-Agenten', 's-meldung', 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'agent-a.jsonl'), '{}\n');
+
+  const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.ok(s.subagentMtime > 0);
 });

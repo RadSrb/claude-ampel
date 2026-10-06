@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import { portBelegt, portAusConfig } from './lib/port.js';
 import { overlaySucher } from './lib/overlay.js';
+import { entlassen } from './lib/shell.js';
 import { electronPfad, umgebungOhneNodeModus } from './lib/electron.js';
 import { neustartEntscheidung } from './lib/watchdog-regel.js';
 
@@ -197,6 +198,9 @@ async function overlaySichern() {
   // Erst nachsehen, ob schon eins laeuft -- sonst startet der Waechter ein
   // zweites, das die Sperre sofort beendet, und versucht es endlos wieder.
   const gefunden = await overlaySuche();
+  // Der Waechter braucht PowerShell nur fuer diese eine Frage. Ohne Entlassen
+  // bliebe der Dauerlaeufer danach stehen, bis der Waechter selbst endet.
+  entlassen();
   if (gefunden) {
     if (fremdeOverlayPid !== gefunden.pid) notiere(`Overlay laeuft bereits, PID ${gefunden.pid}`);
     fremdeOverlayPid = gefunden.pid;

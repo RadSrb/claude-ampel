@@ -230,9 +230,16 @@ Transkript als vergessen gilt.
   Buchhaltungseinträge (`attachment`, `ai-title`, `frame-link`, `atis-latch`) werden
   übersprungen; das Lesefenster wächst, bis ein echter Gesprächsschritt darin liegt.
   Ergebnisse werden über Größe und Zeitstempel zwischengespeichert — Transkripte
-  werden zweistellige MB groß.
-- **Hooks**: `hook.js` meldet `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
-  `Notification`, `Stop`, `SessionStart`, `SessionEnd` an den Server.
+  werden zweistellige MB groß. Solange der Turn offen ist, zählt auch der jüngste
+  Schreibvorgang unter `<sessionId>/subagents/` als Lebenszeichen: Während ein
+  Subagent arbeitet, schweigt das Haupt-Transkript, und die Session ist trotzdem
+  nicht „steht“.
+- **Hooks**: `hook.js` meldet `UserPromptSubmit`, `Notification`, `Stop`,
+  `SubagentStop`, `SessionStart`, `SessionEnd` an den Server. `PreToolUse` und
+  `PostToolUse` sind bewusst **nicht** mehr dabei: sie starteten bei jedem
+  Werkzeugaufruf jeder Session einen node-Prozess. Was sie meldeten — Werkzeugname,
+  letzte Bewegung, „Freigabe erteilt" — liest die Ampel aus dem Transkript. Wer
+  sie noch eingetragen hat, kann sie stehen lassen; sie werden weiter verstanden.
 - **Ports**: `Get-NetTCPConnection` + Kommandozeile des lauschenden Prozesses.
   Auf einem Port lauschen oft mehrere Prozesse — ihre Pfade werden vereinigt,
   weil bei `npm run dev` nur ein Geschwisterprozess den Projektpfad trägt.

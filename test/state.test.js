@@ -261,3 +261,86 @@ test('unbekannte Hook-SessionId legt keinen Geisterzustand an', () => {
   store.handleHook({ session_id: 'gibt-es-nicht', hook_event_name: 'Stop' });
   assert.deepEqual(store.update([sess()]).map((s) => s.sessionId), ['s1']);
 });
+
+test('die Aktivitaetszeit ist das Juengere aus Hook und Transkript', () => {
+  // Ohne Pre-/PostToolUse-Hooks meldet sich der Hook nur beim Prompt. Das
+  // Transkript waechst danach mit jedem Werkzeugaufruf weiter -- diese
+  // Bewegung muss zaehlen, sonst steht eine arbeitende Session nach fuenf
+  // Minuten faelschlich auf "steht".
+  const store = new StateStore(CFG);
+  const now = Date.now();
+  store.handleHook({ session_id: 's1', hook_event_name: 'UserPromptSubmit' });
+  store.hookState.get('s1').lastActivity = now - 6 * MINUTE;
+  const frisch = new Date(now - 10 * 1000);
+  const [s] = store.update([sess({ tail: tail({ lastTurn: turnTool, mtime: frisch }) })], now);
+  assert.equal(s.status, 'running');
+  assert.equal(s.lastActivity, frisch.getTime());
+});
+
+test('ohne Hook-Notiz kommt der Werkzeugname aus dem Transkript', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'UserPromptSubmit' });
+  const [s] = store.update([sess({ tail: tail({ lastTurn: turnTool }) })]);
+  assert.equal(s.note, 'Bash');
+});
+
+test('eine Freigabe-Anfrage bleibt rot, bis das Gespraech danach weitergeht', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission' });
+  const anfrage = store.hookState.get('s1').since;
+
+  // Der Werkzeugaufruf stand schon vor der Anfrage im Transkript: weiter rot.
+  const davor = { ...turnTool, timestamp: new Date(anfrage - 2000).toISOString() };
+  let [s] = store.update([sess({ tail: tail({ lastTurn: davor }) })]);
+  assert.equal(s.status, 'attention');
+
+  // Ohne Zeitstempel laesst sich nichts beweisen: weiter rot.
+  [s] = store.update([sess({ tail: tail({ lastTurn: turnResult }) })]);
+  assert.equal(s.status, 'attention');
+
+  // Das Werkzeugergebnis kam nach der Anfrage: du hast entschieden, es laeuft.
+  const danach = { ...turnResult, timestamp: new Date(anfrage + 2000).toISOString() };
+  [s] = store.update([sess({ tail: tail({ lastTurn: danach }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.color, 'yellow');
+});
+
+test('eine Anfrage nach beendetem Turn bleibt rot, auch wenn das Transkript juenger ist', () => {
+  // "Claude wartet auf deine Eingabe" kommt nach dem Turn-Ende. Ein beendeter
+  // Turn ist kein Weiterlaufen -- die Anfrage darf nicht verschwinden.
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'waiting' });
+  const anfrage = store.hookState.get('s1').since;
+  const ende = { ...turnDone, timestamp: new Date(anfrage + 2000).toISOString() };
+  const [s] = store.update([sess({ tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'attention');
+});
+
+test('ein arbeitender Subagent haelt die Session gelb, auch wenn das Haupt-Transkript schweigt', () => {
+  // Waehrend ein Agent-Werkzeug laeuft, schreibt nur der Subagent -- in
+  // <session>/subagents/agent-*.jsonl. Das Haupt-Transkript bleibt stehen.
+  const store = new StateStore(CFG);
+  const alt = new Date(Date.now() - 400 * 1000);
+  const agent = { ...turnTool, toolName: 'Agent' };
+  const [s] = store.update([sess({ subagentMtime: Date.now() - 5000, tail: tail({ lastTurn: agent, mtime: alt }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.color, 'yellow');
+});
+
+test('ein seit Langem stiller Subagent kippt trotzdem auf rot', () => {
+  const store = new StateStore(CFG);
+  const alt = new Date(Date.now() - 400 * 1000);
+  const agent = { ...turnTool, toolName: 'Agent' };
+  const [s] = store.update([sess({ subagentMtime: Date.now() - 350 * 1000, tail: tail({ lastTurn: agent, mtime: alt }) })]);
+  assert.equal(s.status, 'stalled');
+});
+
+test('nach einer erledigten Freigabe verschwindet auch ihr Hinweistext', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash' });
+  const anfrage = store.hookState.get('s1').since;
+  const danach = { ...turnTool, toolName: 'Write', timestamp: new Date(anfrage + 2000).toISOString() };
+  const [s] = store.update([sess({ tail: tail({ lastTurn: danach }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'Write');
+});

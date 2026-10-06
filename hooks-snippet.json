@@ -6,12 +6,6 @@
     "UserPromptSubmit": [
       { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
     ],
-    "PreToolUse": [
-      { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
-    ],
-    "PostToolUse": [
-      { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
-    ],
     "Notification": [
       { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
     ],

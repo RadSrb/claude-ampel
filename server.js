@@ -11,17 +11,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exec, spawn } from 'node:child_process';
 
-import { scan } from './lib/scanner.js';
+import { scan, cacheStand } from './lib/scanner.js';
 import { StateStore } from './lib/state.js';
 import { listPorts, portsForCwd, unmatchedPorts } from './lib/ports.js';
 import { listWindows, assignWindows, focusWindow, focusViaCode, isAmbiguous } from './lib/windows.js';
-import { groupByProject } from './lib/grouping.js';
+import { vorwaermen } from './lib/shell.js';
+import { groupByProject, istAgentSession } from './lib/grouping.js';
 import { nutzung } from './lib/usage.js';
 import { loadOrCreateSecrets, tokenGleich } from './lib/secrets.js';
 import { PushDienst } from './lib/push.js';
 import { overlaySucher } from './lib/overlay.js';
 import { CODE_PORT_BELEGT } from './lib/watchdog-regel.js';
 import { FELDER, oeffentlich, pruefen, sichern, brauchtNeustart } from './lib/settings.js';
+import { einzelflug, sendenswert } from './lib/takt.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(HERE, 'config.json');
@@ -31,6 +33,8 @@ const CONFIG = loadOrCreateSecrets(CONFIG_PATH, {
   scanIntervalMs: 2000,
   stallSeconds: 300,
   orphanAfterMinutes: 10,
+  // Hier legt der Agent seine Sessions an -- die Ampel zeigt sie gar nicht.
+  agentOrdner: ['C:\\Projekte\\01Website', 'C:\\Projekte\\Agenten\\website-relaunch-agent\\.work'],
   ...readConfig(),
 });
 
@@ -190,21 +194,44 @@ const store = new StateStore({
 const clients = new Set();
 let snapshot = { projects: [], sessions: [], orphans: [], otherPorts: [], limit: null, updatedAt: 0 };
 let lastPayload = '';
+// Letzter Stand von Ports und Fenstern -- bleibt stehen, solange niemand zuschaut.
+let letztePorts = [];
+let letzteFenster = [];
 
-async function tick() {
+// Selbstmessung: nur Zaehler, die ohnehin anfallen -- kein eigener Zeitgeber,
+// keine Dateizugriffe. Unten wird daraus alle zehn Minuten eine Logzeile.
+const neueMessung = () => ({ takte: 0, scanMs: 0, scanMax: 0, verzugMax: 0, gesendet: 0, bytes: 0, hooks: 0 });
+let messung = neueMessung();
+
+async function taktLauf() {
   let sessions;
+  const beginn = performance.now();
   try {
     sessions = scan();
   } catch (err) {
     console.error('Scan fehlgeschlagen:', err.message);
     return;
   }
+  // Der Scan ist der einzige Teil des Takts, der die Ereignisschleife anhaelt.
+  const scanMs = performance.now() - beginn;
+  messung.takte++;
+  messung.scanMs += scanMs;
+  if (scanMs > messung.scanMax) messung.scanMax = scanMs;
 
   const rows = store.update(sessions);
 
   // Ports, Fenster und Nutzungslimit sind langsamer (PowerShell bzw. Netz)
-  // und deshalb jeweils zwischengespeichert.
-  const [ports, windows, limit] = await Promise.all([listPorts(), listWindows(), nutzung()]);
+  // und deshalb jeweils zwischengespeichert. Ports und Fenster sieht nur, wer
+  // zuschaut: ohne offene Oberflaeche genuegt der Scan, denn Push braucht
+  // allein den Status. Das Limit bleibt, weil die Vorwarnung daran haengt.
+  const zuschauer = clients.size > 0;
+  const [ports, windows, limit] = await Promise.all([
+    zuschauer ? listPorts() : letztePorts,
+    zuschauer ? listWindows() : letzteFenster,
+    nutzung(),
+  ]);
+  letztePorts = ports;
+  letzteFenster = windows;
 
   // Auch graue Sessions ohne Transkript bleiben stehen, solange ihr Prozess
   // lebt -- der Scanner liefert ohnehin nur lebende Prozesse.
@@ -219,10 +246,15 @@ async function tick() {
     row.windowAmbiguous = win ? isAmbiguous(windows, { folder: row.folder }) && !row.title : false;
   }
 
+  // Agenten-Sessions blendet die Ampel ganz aus: keine Kachel, kein
+  // Fenster-Knopf, kein Push. Fensterzuordnung und Ports oben sehen sie
+  // trotzdem, sonst landete ihr Fenster bei einer eigenen Session.
+  const eigene = sichtbar.filter((r) => !istAgentSession(r.cwd, CONFIG.agentOrdner));
+
   snapshot = {
-    projects: groupByProject(sichtbar),
+    projects: groupByProject(eigene),
     limit,
-    sessions: sichtbar,
+    sessions: eigene,
     otherPorts: unmatchedPorts(
       ports,
       sichtbar.map((r) => r.cwd).filter(Boolean),
@@ -233,7 +265,7 @@ async function tick() {
 
   broadcast();
 
-  for (const session of push.neuRot(sichtbar)) {
+  for (const session of push.neuRot(eigene)) {
     push.melden(session).catch(() => {
       /* Push ist Beiwerk -- ein Fehler darf die Ampel nicht stoppen. */
     });
@@ -249,14 +281,21 @@ async function tick() {
   }
 }
 
+// Hooks stossen den Takt zusaetzlich zum Intervall an. Ohne Einzelflug liefen
+// dann mehrere Scans nebeneinander, waehrend die Portabfrage noch unterwegs ist.
+const tick = einzelflug(taktLauf, (err) => console.error('Takt fehlgeschlagen:', err?.message ?? err));
+
 function broadcast() {
   // "since" und "lastActivity" sind absolute Zeitstempel -- die Uhr laeuft im Browser,
-  // deshalb muss nur bei echten Aenderungen gesendet werden.
-  const payload = JSON.stringify(snapshot);
-  if (payload === lastPayload) return;
-  lastPayload = payload;
+  // deshalb muss nur bei echten Aenderungen gesendet werden. Was sich bewegt,
+  // ohne angezeigt zu werden (updatedAt, lastActivity), zaehlt nicht mit.
+  const kern = sendenswert(snapshot, lastPayload);
+  if (kern === null) return;
+  lastPayload = kern;
 
-  const frame = `data: ${payload}\n\n`;
+  const frame = `data: ${JSON.stringify(snapshot)}\n\n`;
+  messung.gesendet++;
+  messung.bytes += frame.length * clients.size;
   for (const res of clients) {
     try {
       res.write(frame);
@@ -439,11 +478,14 @@ const server = http.createServer(async (req, res) => {
     res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
     clients.add(res);
     req.on('close', () => clients.delete(res));
+    // Ports und Fenster ruhten ohne Zuschauer -- fuer den ersten gleich nachholen.
+    if (clients.size === 1) setImmediate(tick);
     return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/hook') {
     const body = await readBody(req);
+    messung.hooks++;
     try {
       const changed = store.handleHook(JSON.parse(body));
       // Ein Hook ist die praeziseste Information, die es gibt -- sofort auswerten.
@@ -515,7 +557,37 @@ for (const art of ['uncaughtException', 'unhandledRejection']) {
 }
 
 tick();
-setInterval(tick, CONFIG.scanIntervalMs);
+let letzterTakt = Date.now();
+setInterval(() => {
+  // Kommt der Takt spaeter als bestellt, war die Ereignisschleife blockiert.
+  const jetzt = Date.now();
+  messung.verzugMax = Math.max(messung.verzugMax, jetzt - letzterTakt - CONFIG.scanIntervalMs);
+  letzterTakt = jetzt;
+  tick();
+}, CONFIG.scanIntervalMs);
+
+// Eine Zeile Selbstmessung ins Log: die erste nach einer Minute, dann alle
+// zehn. Steigen rss oder die Caches ueber Tage stetig, ist das ein Leck.
+function messzeile() {
+  const m = process.memoryUsage();
+  const mb = (n) => Math.round(n / 1048576);
+  const c = cacheStand();
+  console.log(
+    `Messung: ${messung.takte} Takte, Scan avg ${(messung.scanMs / Math.max(1, messung.takte)).toFixed(1)} ms ` +
+      `max ${messung.scanMax.toFixed(0)} ms, Verzug max ${messung.verzugMax} ms, ` +
+      `${messung.gesendet} gesendet (${Math.round(messung.bytes / 1024)} KB), ${messung.hooks} Hooks, ` +
+      `${clients.size} Zuschauer, rss ${mb(m.rss)} MB, heap ${mb(m.heapUsed)} MB, ` +
+      `Caches ${c.tails}/${c.transkripte}`,
+  );
+  messung = neueMessung();
+}
+setTimeout(messzeile, 60_000);
+setInterval(messzeile, 600_000);
+
+// Die Aktionsspur bekommt ihren Dauerlaeufer erst beim ersten Auftrag -- und
+// dessen Start kostet rund 400 ms. Die wuerde sonst ausgerechnet der erste
+// Klick auf "Fenster" bezahlen. Deshalb hier einmal ins Leere gefragt.
+vorwaermen();
 
 // SSE-Verbindungen offen halten, auch wenn sich lange nichts aendert.
 setInterval(() => {

@@ -7,3 +7,5 @@ node_modules/
 overlay/position.json
 # Laufzeit-Protokolle des Waechters.
 logs/
+# Ausgabe von /brag (Video, Einzelbilder).
+brag-output/

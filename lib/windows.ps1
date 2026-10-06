@@ -19,6 +19,10 @@ $ErrorActionPreference = 'Stop'
 # Umlaute und … kommen dann zerstoert in Node an.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Der Dauerlaeufer (host.ps1) faehrt dieses Skript mehrfach in derselben
+# PowerShell-Sitzung. Add-Type wuerde beim zweiten Mal ueber den schon
+# vorhandenen Typ stolpern -- und kostet ohnehin 100-230 ms je Uebersetzung.
+if (-not ('AmpelWin' -as [type])) {
 Add-Type @'
 using System;
 using System.Text;
@@ -93,7 +97,7 @@ public class AmpelWin {
   // bekaeme ihn das Programm, das gerade noch den Vordergrund hatte.
   public static bool FocusAndType(IntPtr hWnd) {
     bool ok = Focus(hWnd);
-    for (int i = 0; i < 25 && GetForegroundWindow() != hWnd; i++) System.Threading.Thread.Sleep(20);
+    for (int i = 0; i < 100 && GetForegroundWindow() != hWnd; i++) System.Threading.Thread.Sleep(5);
     if (GetForegroundWindow() != hWnd) return ok;
     SendFocusKey();
     return ok;
@@ -114,6 +118,7 @@ public class AmpelWin {
   }
 }
 '@
+}
 
 function Get-EditorPids {
   $map = @{}

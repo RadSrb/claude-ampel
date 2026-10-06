@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { groupByProject } from '../lib/grouping.js';
+import { groupByProject, istAgentSession } from '../lib/grouping.js';
 
 function row(over = {}) {
   return {
@@ -96,4 +96,19 @@ test('bei gleichem Zustand entscheidet die aeltere Gruppe', () => {
     gruppen.map((g) => g.folder),
     ['alt', 'neu'],
   );
+});
+
+test('Sessions unter einem Agenten-Ordner gelten als Agenten-Session', () => {
+  // Die Website-Sessions legt der Agent an -- zum Mitlesen, nicht zum Anklicken.
+  const ordner = ['C:\\Projekte\\01Website'];
+  assert.equal(istAgentSession('C:\\Projekte\\01Website\\VeloceEngineeringWebsite', ordner), true);
+  assert.equal(istAgentSession('c:/projekte/01website/Demo/', ordner), true);
+  assert.equal(istAgentSession('C:\\Projekte\\01Website', ordner), true);
+});
+
+test('ein aehnlich benannter Nachbarordner ist keine Agenten-Session', () => {
+  const ordner = ['C:\\Projekte\\01Website'];
+  assert.equal(istAgentSession('C:\\Projekte\\01WebsiteAlt\\Demo', ordner), false);
+  assert.equal(istAgentSession('C:\\Projekte\\ClaudeAmpel', ordner), false);
+  assert.equal(istAgentSession(null, ordner), false);
 });
