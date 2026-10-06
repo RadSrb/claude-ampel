@@ -524,7 +524,7 @@ test('scan sieht die Aktivitaet eines laufenden Subagenten', () => {
   assert.equal(Math.round(s.subagentMtime / 1000), Math.round(frisch.getTime() / 1000));
 });
 
-test('scan fragt den Subagent-Ordner nicht ab, wenn der Turn beendet ist', () => {
+test('scan sieht Subagenten auch nach beendetem Turn (Hintergrund-Agenten)', () => {
   const root = makeFixture();
   writeSession(root, { pid: 111, sessionId: 's-fertig', cwd: 'c:\Projekte\Agenten', startedAt: 1 });
   writeTranscript(root, 'c--Projekte-Agenten', 's-fertig', [
@@ -535,7 +535,7 @@ test('scan fragt den Subagent-Ordner nicht ab, wenn der Turn beendet ist', () =>
   fs.writeFileSync(path.join(dir, 'agent-a.jsonl'), '{}\n');
 
   const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
-  assert.equal(s.subagentMtime, null);
+  assert.ok(s.subagentMtime > 0);
 });
 
 test('scan sieht Subagenten auch, wenn zuletzt eine Nachricht kam statt eines Werkzeugaufrufs', () => {

@@ -8,7 +8,7 @@ am PC und am Handy.
 | 🔴 rot | braucht dich | Claude wartet auf eine Freigabe oder Antwort (Notification-Hook) |
 | 🔴 rot | fragt dich | Der Turn ist zu Ende, endet aber mit einer **Frage oder einem Vorschlag** — oder ein Auswahl-Widget bzw. eine Plan-Freigabe steht offen |
 | 🔴 rot | steht | Läuft angeblich, rührt sich aber seit 5 Minuten nicht |
-| 🟡 gelb | läuft | Arbeitet gerade |
+| 🟡 gelb | läuft | Arbeitet gerade — auch wenn der Chat schon fertig aussieht, aber **Hintergrund-Agenten** noch schreiben |
 | 🟢 grün | fertig | Turn abgeschlossen, wartet auf einen neuen Auftrag |
 | ⚪ grau | unbekannt | Kein Transkript vorhanden |
 
@@ -214,6 +214,32 @@ Für die präzise Ampel den Inhalt von `hooks-snippet.json` in
 `~/.claude/settings.json` einfügen. Claude Code lädt die Datei im laufenden
 Betrieb neu — die Hooks greifen sofort, auch in bereits offenen Sessions.
 
+## Automatisch fortfahren
+
+`fortfahren.js` ist ein zweiter Stop-Hook. Er erspart das von Hand getippte
+„fahre fort“: Endet ein Turn, in dem Claude gearbeitet hat (mindestens ein
+Werkzeugaufruf seit deinem letzten Auftrag), schickt der Hook Claude **einmal**
+weiter — offene Arbeit erledigen, auch parallel zu laufenden Hintergrund-Agenten;
+ist nichts mehr offen, endet der Zug mit einem kurzen Satz.
+
+Er greift **nicht**, wenn
+
+- Claude eine Frage stellt, ein Auswahl-Widget oder eine Plan-Freigabe offen ist
+  (dieselbe Erkennung wie die rote Ampel),
+- das Nutzungslimit erreicht ist,
+- der Turn nur eine Antwort ohne Werkzeug war,
+- der Turn selbst schon eine automatische Fortsetzung war (`stop_hook_active`) —
+  es gibt also keine Endlosschleife,
+- die Session ein Skriptlauf ist (`claude -p`, Einstieg `sdk-cli`), dessen letzte
+  Nachricht ein Programm weiterverarbeitet.
+
+Kosten: höchstens ein zusätzlicher Zug pro Turn-Ende, auf dem bereits
+zwischengespeicherten Kontext.
+
+**Ausschalten**: eine leere Datei `fortfahren-aus` neben `fortfahren.js` legen
+(wirkt sofort) oder `CLAUDE_FORTFAHREN=0` setzen. Gemessen über 21 Tage folgten
+von 118 getippten „fahre fort“ nur 5 auf eine echte Rückfrage.
+
 ## Konfiguration
 
 `config.json` wird beim ersten Start angelegt und enthält **Token und privaten
@@ -240,10 +266,15 @@ Transkript als vergessen gilt.
   Buchhaltungseinträge (`attachment`, `ai-title`, `frame-link`, `atis-latch`) werden
   übersprungen; das Lesefenster wächst, bis ein echter Gesprächsschritt darin liegt.
   Ergebnisse werden über Größe und Zeitstempel zwischengespeichert — Transkripte
-  werden zweistellige MB groß. Solange der Turn offen ist, zählt auch der jüngste
-  Schreibvorgang unter `<sessionId>/subagents/` als Lebenszeichen: Während ein
-  Subagent arbeitet, schweigt das Haupt-Transkript, und die Session ist trotzdem
-  nicht „steht“.
+  werden zweistellige MB groß. Der jüngste Schreibvorgang unter
+  `<sessionId>/subagents/` zählt als Lebenszeichen: Während ein Subagent
+  arbeitet, schweigt das Haupt-Transkript, und die Session ist trotzdem nicht
+  „steht“. Schreibt ein Agent **nach** dem Turn-Ende weiter (`run_in_background`),
+  bleibt die Kachel gelb mit dem Hinweis *Hintergrund-Agenten*.
+- **Grün ist nicht endgültig**: Meldet sich ein Hintergrund-Agent zurück, arbeitet
+  Claude ohne neue Eingabe weiter — dafür gibt es keinen Hook. Steht im Transkript
+  ein Gesprächsschritt, der jünger ist als der letzte `Stop`, gilt die Session
+  wieder als laufend.
 - **Hooks**: `hook.js` meldet `UserPromptSubmit`, `Notification`, `Stop`,
   `SubagentStop`, `SessionStart`, `SessionEnd` an den Server. `PreToolUse` und
   `PostToolUse` sind bewusst **nicht** mehr dabei: sie starteten bei jedem

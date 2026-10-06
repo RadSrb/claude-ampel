@@ -327,6 +327,61 @@ test('ein arbeitender Subagent haelt die Session gelb, auch wenn das Haupt-Trans
   assert.equal(s.color, 'yellow');
 });
 
+test('eine Session, die nach dem Stop-Hook von selbst weiterlaeuft, wird wieder gelb', () => {
+  // Meldet ein Hintergrund-Agent sich zurueck (task-notification, agent-message),
+  // arbeitet Claude ohne neue Eingabe weiter -- es kommt kein UserPromptSubmit.
+  // Der Stop-Hook hielt die Kachel bis zum naechsten Stop faelschlich gruen.
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  const stop = store.hookState.get('s1').since;
+  const weiter = { ...turnTool, timestamp: new Date(stop + 3000).toISOString() };
+  const [s] = store.update([sess({ tail: tail({ lastTurn: weiter }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.color, 'yellow');
+});
+
+test('nach dem Stop-Hook bleibt es gruen, solange das Transkript nichts Neueres zeigt', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  const stop = store.hookState.get('s1').since;
+  const ende = { ...turnDone, timestamp: new Date(stop - 500).toISOString() };
+  const [s] = store.update([sess({ tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'done');
+});
+
+test('Hintergrund-Agenten halten eine Session mit beendetem Turn gelb', () => {
+  // Der Haupt-Turn ist zu Ende, aber Agenten mit run_in_background schreiben
+  // weiter in subagents/. Die Session arbeitet -- nur nicht im sichtbaren Chat.
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 4 * MINUTE).toISOString() };
+  const [s] = store.update([sess({ subagentMtime: Date.now() - 2000, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'Hintergrund-Agenten');
+});
+
+test('ein Subagent, der vor dem Turn-Ende zuletzt schrieb, haelt nichts gelb', () => {
+  const store = new StateStore(CFG);
+  const endeMs = Date.now() - 60 * 1000;
+  const ende = { ...turnDone, timestamp: new Date(endeMs).toISOString() };
+  const [s] = store.update([sess({ subagentMtime: endeMs - 5000, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'done');
+});
+
+test('ein seit Langem stiller Hintergrund-Agent faerbt eine fertige Session nicht gelb', () => {
+  const store = new StateStore(CFG);
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 20 * MINUTE).toISOString() };
+  const [s] = store.update([sess({ subagentMtime: Date.now() - 10 * MINUTE, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'done');
+});
+
+test('eine Frage bleibt rot, auch wenn Hintergrund-Agenten arbeiten', () => {
+  const store = new StateStore(CFG);
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - MINUTE).toISOString() };
+  const [s] = store.update([sess({ subagentMtime: Date.now() - 2000, tail: tail({ lastTurn: ende, frage: true }) })]);
+  assert.equal(s.status, 'question');
+});
+
 test('ein seit Langem stiller Subagent kippt trotzdem auf rot', () => {
   const store = new StateStore(CFG);
   const alt = new Date(Date.now() - 400 * 1000);

@@ -10,7 +10,12 @@
       { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" },
+          { "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\fortfahren.js\"" }
+        ]
+      }
     ],
     "SubagentStop": [
       { "hooks": [{ "type": "command", "command": "node \"C:\\Projekte\\ClaudeAmpel\\hook.js\"" }] }
