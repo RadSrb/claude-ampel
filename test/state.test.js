@@ -327,6 +327,39 @@ test('ein arbeitender Subagent haelt die Session gelb, auch wenn das Haupt-Trans
   assert.equal(s.color, 'yellow');
 });
 
+test('ein offenes Auswahl-Widget ist rot, nicht gelb', () => {
+  // Claude hat AskUserQuestion aufgerufen und wartet. Im Transkript steht das
+  // als Werkzeugaufruf mit stop_reason tool_use -- wie jede laufende Arbeit.
+  const store = new StateStore(CFG);
+  const widget = { ...turnTool, toolName: 'AskUserQuestion', wartet: true };
+  const [s] = store.update([sess({ tail: tail({ lastTurn: widget }) })]);
+  assert.equal(s.status, 'question');
+  assert.equal(s.color, 'red');
+  assert.equal(s.note, 'Auswahl offen');
+});
+
+test('ein offenes Auswahl-Widget schlaegt auch den UserPromptSubmit-Hook', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'UserPromptSubmit' });
+  const widget = { ...turnTool, toolName: 'ExitPlanMode', wartet: true };
+  const [s] = store.update([sess({ tail: tail({ lastTurn: widget }) })]);
+  assert.equal(s.status, 'question');
+});
+
+test('ein offenes Widget kippt nach Minuten nicht auf "steht"', () => {
+  const store = new StateStore(CFG);
+  const widget = { ...turnTool, toolName: 'AskUserQuestion', wartet: true };
+  const [s] = store.update([sess({ tail: tail({ lastTurn: widget, mtime: new Date(Date.now() - 20 * MINUTE) }) })]);
+  assert.equal(s.status, 'question');
+});
+
+test('nach der Antwort auf das Widget laeuft es wieder', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'UserPromptSubmit' });
+  const [s] = store.update([sess({ tail: tail({ lastTurn: turnResult }) })]);
+  assert.equal(s.status, 'running');
+});
+
 test('eine Session, die nach dem Stop-Hook von selbst weiterlaeuft, wird wieder gelb', () => {
   // Meldet ein Hintergrund-Agent sich zurueck (task-notification, agent-message),
   // arbeitet Claude ohne neue Eingabe weiter -- es kommt kein UserPromptSubmit.

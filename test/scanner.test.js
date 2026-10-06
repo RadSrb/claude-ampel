@@ -54,6 +54,38 @@ test('readTranscriptTail erkennt einen beendeten Turn', () => {
   assert.ok(tail.mtime instanceof Date);
 });
 
+test('readTranscriptTail erkennt ein offenes Auswahl-Widget, auch neben anderen Werkzeugen', () => {
+  const root = makeFixture();
+  const file = writeTranscript(root, 'c--x', 's-widget', [
+    { type: 'user', message: { role: 'user', content: 'bau das' } },
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        stop_reason: 'tool_use',
+        content: [
+          { type: 'text', text: 'Vorher eine Entscheidung.' },
+          { type: 'tool_use', id: 't0', name: 'Read', input: {} },
+          { type: 'tool_use', id: 't1', name: 'AskUserQuestion', input: {} },
+        ],
+      },
+    },
+  ]);
+  assert.equal(readTranscriptTail(file).lastTurn.wartet, true);
+});
+
+test('ein gewoehnlicher Werkzeugaufruf wartet nicht auf dich', () => {
+  const root = makeFixture();
+  const file = writeTranscript(root, 'c--x', 's-bash', [
+    { type: 'user', message: { role: 'user', content: 'bau das' } },
+    {
+      type: 'assistant',
+      message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] },
+    },
+  ]);
+  assert.equal(readTranscriptTail(file).lastTurn.wartet, false);
+});
+
 test('readTranscriptTail erkennt einen laufenden Tool-Aufruf', () => {
   const root = makeFixture();
   const file = writeTranscript(root, 'c--x', 's2', [
