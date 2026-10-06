@@ -5,6 +5,8 @@ push-abos.json
 node_modules/
 # Gemerkte Fensterposition des Overlays.
 overlay/position.json
+# Merker: Overlay wurde von Hand geschlossen.
+overlay/geschlossen
 # Laufzeit-Protokolle des Waechters.
 logs/
 # Ausgabe von /brag (Video, Einzelbilder).

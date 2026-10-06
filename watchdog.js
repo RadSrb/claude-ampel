@@ -17,6 +17,7 @@ import { overlaySucher } from './lib/overlay.js';
 import { entlassen } from './lib/shell.js';
 import { electronPfad, umgebungOhneNodeModus } from './lib/electron.js';
 import { neustartEntscheidung } from './lib/watchdog-regel.js';
+import { overlayGeschlossen } from './lib/overlay-aus.cjs';
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const LOGORDNER = path.join(HIER, 'logs');
@@ -179,6 +180,7 @@ const overlaySuche = overlaySucher(HIER, 5000);
 let overlayKind = null;
 let fremdeOverlayPid = null;
 let aufsichtLaeuft = false;
+let geschlossenGemeldet = false;
 
 /** Billiger Existenztest -- 0,01 ms statt eines PowerShell-Starts. */
 function lebt(pid) {
@@ -194,6 +196,14 @@ function lebt(pid) {
 async function overlaySichern() {
   if (overlayKind && overlayKind.exitCode === null) return;
   if (lebt(fremdeOverlayPid)) return;
+
+  // Von Hand geschlossen: nicht zurueckholen, bis es von Hand wieder geoeffnet wird.
+  if (overlayGeschlossen(HIER)) {
+    if (!geschlossenGemeldet) notiere('Overlay wurde geschlossen -- bleibt zu, bis es wieder geoeffnet wird');
+    geschlossenGemeldet = true;
+    return;
+  }
+  geschlossenGemeldet = false;
 
   // Erst nachsehen, ob schon eins laeuft -- sonst startet der Waechter ein
   // zweites, das die Sperre sofort beendet, und versucht es endlos wieder.

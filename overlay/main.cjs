@@ -7,6 +7,7 @@
 const { app, BrowserWindow, screen, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const { overlaySchliessenMerken } = require('../lib/overlay-aus.cjs');
 
 const WURZEL = path.join(__dirname, '..');
 const STAND_PFAD = path.join(__dirname, 'position.json');
@@ -138,6 +139,15 @@ function fensterBauen() {
   fenster.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // Das Kreuz in der Seite setzt #schliessen. Nur so ist erkennbar, dass man
+  // das Overlay absichtlich zugemacht hat -- ein Absturz oder das Herunter-
+  // fahren schliesst es auch, soll den Waechter aber nicht abhalten.
+  fenster.webContents.on('did-navigate-in-page', (_ev, url) => {
+    if (new URL(url).hash !== '#schliessen') return;
+    overlaySchliessenMerken(WURZEL);
+    app.quit();
   });
 
   fenster.loadURL(`http://127.0.0.1:${port}/mini?t=${encodeURIComponent(cfg.token)}`);

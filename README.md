@@ -111,6 +111,10 @@ Eine Zahl hinter dem Namen bedeutet mehrere Sessions in diesem Projekt.
   auf einem inzwischen abgesteckten Monitor, springt das Fenster zurück an den
   rechten Rand des Hauptbildschirms.
 - **⧉** öffnet das große Dashboard im Standardbrowser, **✕** schließt das Overlay.
+  Geschlossen bleibt es zu: der Wächter holt nur ein **abgestürztes** Overlay
+  zurück. Wieder öffnen über die Desktop-Verknüpfung bzw. `Ampel starten.vbs`
+  oder *Einstellungen → Overlay starten*. Gemerkt wird das in `overlay/geschlossen`;
+  der Autostart (`/auto`) lässt ein geschlossenes Overlay zu.
 - Kein Eintrag in der Taskleiste, kein Fokusklau beim Start.
 
 Setzt voraus, dass `start.cmd` bereits läuft. Die Fensterebene ist bewusst
@@ -170,13 +174,19 @@ will, richtet stattdessen einen benannten Tunnel mit Cloudflare Access ein
 
 Am Handy entfällt der **Fenster**-Knopf — der Rechner steht woanders.
 
-### Benachrichtigung bei Rot
+### Benachrichtigung bei Rot und bei Fertig
 
 Über den Tunnel (HTTPS) erscheint oben ein **🔔 Benachrichtigen**-Knopf.
 Einmal antippen, Erlaubnis erteilen — danach kommt eine Push-Nachricht, sobald
-eine Session auf Rot springt, auch bei geschlossenem Browser.
+eine Session auf Rot springt oder fertig wird, auch bei geschlossenem Browser.
 
-- Gemeldet wird nur der **Übergang** nach Rot, nicht jeder Takt.
+- Gemeldet wird nur der **Übergang** nach Rot, nicht jeder Takt. Die Nachricht
+  nennt den Grund: die Freigabe-Anfrage, Claudes Frage, das Limit oder den Stillstand.
+- **Fertig** wird gemeldet, wenn eine Session von *läuft* (oder *steht*) auf
+  Grün springt — mit dem Anfang von Claudes letzter Antwort. Sessions, die beim
+  Serverstart schon grün sind, melden nichts. Endet der Turn mit einer Frage,
+  kommt nur die Rot-Meldung, nicht beide.
+- Je Session ersetzt die neueste Nachricht die vorige, statt sich daneben zu legen.
 - Ebenso kommt eine Meldung, wenn das **Fünf-Stunden-Fenster 90 % erreicht** —
   einmal je Fenster, mit der verbleibenden Zeit bis zur Zurücksetzung. Die
   Schwelle ist dieselbe, ab der der Balken rot wird.
