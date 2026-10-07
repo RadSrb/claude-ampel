@@ -126,6 +126,54 @@ test('scan erkennt einen Hintergrund-Agenten, der auf einen langen Befehl wartet
   assert.equal(Math.round(s.subagentBefehlMtime / 1000), Math.round(vorhin.getTime() / 1000));
 });
 
+test('parallele Aufrufe: ein Ergebnis da, der zweite Befehl laeuft noch', () => {
+  // So am 07.10. in InvoiceAutomation: Bash und PowerShell in einer Nachricht,
+  // Bash kam nach 2 s zurueck, der Testlauf in PowerShell lief weiter. Der
+  // letzte Eintrag war das Bash-Ergebnis -- die Ampel hielt den Agenten fuer fertig.
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-parallel', cwd: 'c:\\Projekte\\Agenten', startedAt: 1 });
+  writeTranscript(root, 'c--Projekte-Agenten', 's-parallel', [
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Agent laeuft.' }] } },
+  ]);
+  const dir = path.join(root, 'projects', 'c--Projekte-Agenten', 's-parallel', 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  const datei = path.join(dir, 'agent-a.jsonl');
+  fs.writeFileSync(
+    datei,
+    [
+      { type: 'assistant', message: { id: 'm1', role: 'assistant', stop_reason: null, content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } },
+      { type: 'assistant', message: { id: 'm1', role: 'assistant', stop_reason: null, content: [{ type: 'tool_use', id: 't2', name: 'PowerShell', input: {} }] } },
+      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
+    ].map((l) => JSON.stringify(l)).join('\n') + '\n',
+  );
+  const vorhin = new Date(Date.now() - 8 * 60 * 1000);
+  fs.utimesSync(datei, vorhin, vorhin);
+
+  const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(Math.round(s.subagentBefehlMtime / 1000), Math.round(vorhin.getTime() / 1000));
+});
+
+test('parallele Aufrufe: beide Ergebnisse da, nichts wartet mehr', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-beide', cwd: 'c:\\Projekte\\Agenten', startedAt: 1 });
+  writeTranscript(root, 'c--Projekte-Agenten', 's-beide', [
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Agent laeuft.' }] } },
+  ]);
+  const dir = path.join(root, 'projects', 'c--Projekte-Agenten', 's-beide', 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'agent-a.jsonl'),
+    [
+      { type: 'assistant', message: { id: 'm1', role: 'assistant', stop_reason: null, content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } },
+      { type: 'assistant', message: { id: 'm1', role: 'assistant', stop_reason: null, content: [{ type: 'tool_use', id: 't2', name: 'PowerShell', input: {} }] } },
+      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
+      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ok' }] } },
+    ].map((l) => JSON.stringify(l)).join('\n') + '\n',
+  );
+  const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(s.subagentBefehlMtime, null);
+});
+
 test('ohne wartenden Befehl bleibt subagentBefehlMtime leer', () => {
   const root = makeFixture();
   writeSession(root, { pid: 111, sessionId: 's-ohne', cwd: 'c:\\Projekte\\Agenten', startedAt: 1 });
