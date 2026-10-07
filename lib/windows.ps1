@@ -4,6 +4,7 @@
 #   powershell -File windows.ps1 list
 #   powershell -File windows.ps1 focus <hwnd>   (holt das Fenster vor und setzt den Schreibfokus)
 #   powershell -File windows.ps1 typeforeground  (wartet auf einen Editor im Vordergrund und setzt dort den Schreibfokus)
+#   powershell -File windows.ps1 konsole <pid>   (holt das Terminalfenster einer CLI-Session vor -- nur im eigenen Prozess)
 #
 # Get-Process liefert pro Prozess nur EIN MainWindowHandle -- VS Code betreibt
 # aber mehrere Fenster je Prozess. Deshalb EnumWindows ueber die Win32-API.
@@ -48,8 +49,13 @@ public class AmpelWin {
   [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
   [DllImport("user32.dll")] static extern uint MapVirtualKey(uint uCode, uint uMapType);
+  [DllImport("kernel32.dll")] static extern bool FreeConsole();
+  [DllImport("kernel32.dll")] static extern bool AttachConsole(uint pid);
+  [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+  [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
 
   const int SW_RESTORE = 9;
+  const uint GA_ROOTOWNER = 3;
 
   // F13 gibt es auf keiner normalen Tastatur -- deshalb kann dieser Druck
   // niemals von Hand ausgeloest werden und kollidiert mit nichts.
@@ -109,6 +115,24 @@ public class AmpelWin {
     byte scan = (byte)MapVirtualKey(VK_F13, 0);
     keybd_event(VK_F13, scan, 0, UIntPtr.Zero);
     keybd_event(VK_F13, scan, KEYEVENTF_KEYUP, UIntPtr.Zero);
+  }
+
+  // Das sichtbare Fenster, in dem die Konsole eines Prozesses steckt: bei
+  // conhost die Konsole selbst, bei Windows Terminal das Terminalfenster, dem
+  // die unsichtbare Pseudokonsole gehoert. Sessions aus VS Code haben keine
+  // Konsole -- dann Zero.
+  //
+  // Kappt die eigene Konsole des Aufrufers. Deshalb nie im Dauerlaeufer,
+  // nur in einem eigenen powershell.exe (siehe focusConsole in windows.js).
+  public static IntPtr ConsoleRoot(uint pid) {
+    FreeConsole();
+    if (!AttachConsole(pid)) return IntPtr.Zero;
+    IntPtr h = GetConsoleWindow();
+    FreeConsole();
+    if (h == IntPtr.Zero) return IntPtr.Zero;
+    IntPtr root = GetAncestor(h, GA_ROOTOWNER);
+    if (root == IntPtr.Zero) root = h;
+    return IsWindowVisible(root) ? root : IntPtr.Zero;
   }
 
   public static long ForegroundPid() {
@@ -171,6 +195,20 @@ if ($Action -eq 'typeforeground') {
   }
   [AmpelWin]::SendFocusKey()
   ConvertTo-Json -InputObject @{ ok = $true } -Compress
+  exit 0
+}
+
+# Fuer Sessions im Terminal: das zweite Argument ist hier die PID des
+# Claude-Prozesses, kein Fenster. Ohne F13 -- im Terminal kaeme die Taste als
+# Steuerzeichen in der Eingabe an.
+if ($Action -eq 'konsole') {
+  $ziel = [AmpelWin]::ConsoleRoot([uint32]$Hwnd)
+  if ($ziel -eq [IntPtr]::Zero) {
+    ConvertTo-Json -InputObject @{ ok = $false; error = 'keine sichtbare konsole' } -Compress
+    exit 0
+  }
+  $ok = [AmpelWin]::Focus($ziel)
+  ConvertTo-Json -InputObject @{ ok = [bool]$ok; hwnd = $ziel.ToInt64() } -Compress
   exit 0
 }
 

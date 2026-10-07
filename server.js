@@ -14,7 +14,7 @@ import { exec, spawn } from 'node:child_process';
 import { scan, cacheStand } from './lib/scanner.js';
 import { StateStore } from './lib/state.js';
 import { listPorts, portsForCwd, unmatchedPorts } from './lib/ports.js';
-import { listWindows, assignWindows, focusWindow, focusViaCode, isAmbiguous } from './lib/windows.js';
+import { listWindows, assignWindows, focusWindow, focusConsole, focusViaCode, isAmbiguous } from './lib/windows.js';
 import { vorwaermen } from './lib/shell.js';
 import { groupByProject, istAgentSession } from './lib/grouping.js';
 import { nutzung } from './lib/usage.js';
@@ -526,10 +526,16 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Erst das genau zugeordnete Fenster. Gibt es keins, uebernimmt die
-    // VS-Code-Kommandozeile -- die holt das Fenster mit diesem Ordner nach vorn.
+    // Erst das genau zugeordnete Fenster. Gibt es keins, ist es vielleicht eine
+    // Session im Terminal -- deren Fenster haengt an der Konsole. Sonst
+    // uebernimmt die VS-Code-Kommandozeile und holt das Fenster mit diesem
+    // Ordner nach vorn.
     let ok = row.hwnd ? await focusWindow(row.hwnd) : false;
     let weg = ok ? 'fenster' : null;
+    if (!ok && !row.hwnd) {
+      ok = await focusConsole(row.pid);
+      weg = ok ? 'konsole' : null;
+    }
     if (!ok) {
       ok = await focusViaCode(row.cwd);
       weg = ok ? 'code' : null;
