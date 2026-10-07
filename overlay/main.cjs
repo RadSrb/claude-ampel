@@ -102,6 +102,10 @@ function fensterBauen() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      // Das Preload holt lib/ton.cjs per require() -- das geht nur ohne Sandbox.
+      // Die Seite selbst bekommt weiterhin kein Node.
+      sandbox: false,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
@@ -170,6 +174,10 @@ function fensterBauen() {
     });
   }
 }
+
+// Der Ton bei "braucht dich" kommt ohne vorherigen Klick -- ohne diesen
+// Schalter liesse Chromium den AudioContext stumm. Muss vor app.ready stehen.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // Mit dem Autostart wird der Doppelstart zum Normalfall: die Aufgabenplanung
 // hat die Ampel laengst hochgezogen, dann klickt man aus Gewohnheit noch die

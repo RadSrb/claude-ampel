@@ -68,6 +68,7 @@
         cursor: pointer;
       }
       .knopf:hover { color: var(--text); background: rgba(255, 255, 255, 0.09); }
+      .knopf svg { display: block; width: 13px; height: 13px; }
 
       .liste { flex: 1; overflow-y: auto; overflow-x: hidden; }
       .liste::-webkit-scrollbar { width: 7px; }
@@ -180,6 +181,7 @@
       <header>
         <span class="titel">Ampel</span>
         <span class="zaehler" id="zaehler"></span>
+        <button class="knopf" id="ton" hidden></button>
         <button class="knopf" id="gross" title="Großes Dashboard öffnen">⧉</button>
         <button class="knopf" id="zu" title="Overlay schließen">✕</button>
       </header>
@@ -405,6 +407,86 @@
         fetch('/api/open-dashboard', { method: 'POST' }).catch(() => {});
       };
 
+      // --- Ton bei "braucht dich" / "fragt dich" -----------------------------
+      // Nur im Overlay: dort legt das Preload window.ampelOverlay an. Im
+      // Browser und am Handy bleibt die Seite stumm und der Knopf versteckt.
+      const overlay = window.ampelOverlay ?? null;
+      const tonKnopf = document.getElementById('ton');
+      const LAUTSTAERKE = 0.5;
+      let tonAn = true;
+      try {
+        tonAn = localStorage.getItem('ton') !== 'aus';
+      } catch {
+        /* dann eben an */
+      }
+      let tonStand = null;
+      let letzterTon = null;
+      let audio = null;
+
+      function note(ctx, freq, start, dur, gain = 0.3) {
+        const t = ctx.currentTime + start;
+        const osc = ctx.createOscillator(); const g = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(g).connect(ctx.destination); osc.start(t); osc.stop(t + dur + 0.05);
+      }
+
+      async function chime() {
+        try {
+          audio ??= new AudioContext();
+          // Ohne Klick startet der Kontext gern angehalten -- erst wecken.
+          if (audio.state === 'suspended') await audio.resume();
+          const g = 0.3 * LAUTSTAERKE;
+          note(audio, 1047, 0, 0.5, g); note(audio, 1319, 0.1, 0.5, g); note(audio, 1568, 0.2, 0.7, g);
+        } catch {
+          /* kein Ton ist besser als ein kaputtes Overlay */
+        }
+      }
+
+      function tonKnopfZeigen() {
+        const lautsprecher = '<path d="M2 6h3l4-3v10l-4-3H2z" fill="currentColor"/>';
+        const zeichen = tonAn
+          ? '<path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6.5 6.5 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'
+          : '<path d="M11 6l4 4M15 6l-4 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>';
+        tonKnopf.innerHTML = `<svg viewBox="0 0 16 16">${lautsprecher}${zeichen}</svg>`;
+        tonKnopf.title = tonAn ? 'Ton bei „braucht dich“ ausschalten' : 'Ton bei „braucht dich“ einschalten';
+      }
+
+      if (overlay) {
+        tonKnopf.hidden = false;
+        tonKnopfZeigen();
+        tonKnopf.onclick = () => {
+          tonAn = !tonAn;
+          try {
+            localStorage.setItem('ton', tonAn ? 'an' : 'aus');
+          } catch {
+            /* dann eben nur bis zum Neuladen */
+          }
+          tonKnopfZeigen();
+          // Vorschau, damit man gleich hoert, was kommt.
+          if (tonAn) chime();
+        };
+      }
+
+      /** Bei jedem neuen Stand: ist eine Session neu rot geworden? */
+      function tonPruefen() {
+        if (!overlay) return;
+        // Nur das Noetige ueber die Preload-Bruecke schicken -- sie kopiert alles.
+        const knapp = {
+          updatedAt: snapshot.updatedAt,
+          sessions: (snapshot.sessions ?? []).map(({ sessionId, status }) => ({ sessionId, status })),
+        };
+        const jetzt = Date.now();
+        const r = overlay.tonFaellig(tonStand, knapp, jetzt, letzterTon);
+        tonStand = r.stand;
+        if (r.spielen && tonAn) {
+          letzterTon = jetzt;
+          chime();
+        }
+      }
+
       let quelle = null;
       function verbinde() {
         quelle?.close();
@@ -418,6 +500,7 @@
             snapshot = JSON.parse(ev.data);
             verbunden = true;
             render();
+            tonPruefen();
           } catch {
             /* naechster Frame kommt gleich */
           }

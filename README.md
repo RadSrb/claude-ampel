@@ -115,6 +115,11 @@ Eine Zahl hinter dem Namen bedeutet mehrere Sessions in diesem Projekt.
   zurück. Wieder öffnen über die Desktop-Verknüpfung bzw. `Ampel starten.vbs`
   oder *Einstellungen → Overlay starten*. Gemerkt wird das in `overlay/geschlossen`;
   der Autostart (`/auto`) lässt ein geschlossenes Overlay zu.
+- **Ton**: springt eine Session neu auf *braucht dich* oder *fragt dich*, spielt
+  das Overlay einen kurzen Dreiklang (mehrere auf einmal: ein Ton, höchstens
+  alle 3 s; beim Start bereits rote Sessions klingeln nicht). Der Lautsprecher
+  im Kopf schaltet ihn aus und an, gemerkt wird das im Overlay. Nur im Overlay —
+  das Dashboard im Browser und am Handy bleibt stumm.
 - Kein Eintrag in der Taskleiste, kein Fokusklau beim Start.
 
 Setzt voraus, dass `start.cmd` bereits läuft. Die Fensterebene ist bewusst
