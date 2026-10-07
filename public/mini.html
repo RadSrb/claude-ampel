@@ -293,7 +293,32 @@
         limitFeld.innerHTML = balken('5 Std', l.sitzung) + balken('Woche', l.woche) + modelle;
       }
 
+      // Ein Klick zaehlt nur, wenn Druecken und Loslassen dasselbe Element
+      // treffen. Kam dazwischen ein neuer Stand und die Liste wurde neu
+      // gezeichnet, war die gedrueckte Zeile weg -- und der Klick verpuffte.
+      // Deshalb wird waehrend des Drueckens nicht gezeichnet, sondern danach.
+      let gedrueckt = false;
+      let nachholen = false;
+      liste.addEventListener('pointerdown', () => {
+        gedrueckt = true;
+      });
+      const losgelassen = () => {
+        if (!gedrueckt) return;
+        gedrueckt = false;
+        if (!nachholen) return;
+        nachholen = false;
+        // Erst nach dem click-Ereignis, das noch in derselben Runde kommt.
+        setTimeout(render, 0);
+      };
+      window.addEventListener('pointerup', losgelassen);
+      window.addEventListener('pointercancel', losgelassen);
+      window.addEventListener('blur', losgelassen);
+
       function render() {
+        if (gedrueckt) {
+          nachholen = true;
+          return;
+        }
         const now = Date.now();
         const projekte = snapshot.projects ?? [];
         renderLimit();
