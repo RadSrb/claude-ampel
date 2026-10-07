@@ -18,6 +18,10 @@ import { entlassen } from './lib/shell.js';
 import { electronPfad, umgebungOhneNodeModus } from './lib/electron.js';
 import { neustartEntscheidung } from './lib/watchdog-regel.js';
 import { overlayGeschlossen } from './lib/overlay-aus.cjs';
+import { normalePrioritaet } from './lib/prioritaet.js';
+
+// Vor dem ersten Kind: Server und Overlay erben die Prioritaet von hier.
+normalePrioritaet();
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const LOGORDNER = path.join(HIER, 'logs');

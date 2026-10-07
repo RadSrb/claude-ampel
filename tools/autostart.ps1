@@ -49,7 +49,9 @@ switch ($Was) {
         # Auf dem Notebook soll die Ampel auch im Akkubetrieb kommen, und wenn
         # der Rechner beim Anmelden noch beschaeftigt ist, lieber spaeter als
         # gar nicht. Ohne Zeitlimit, weil der Server dauerhaft laeuft.
-        $regeln = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero)
+        # Prioritaet 4 = Normal. Der Standard 7 ist BelowNormal und vererbt sich
+        # auf Server und Overlay -- unter Last standen die dann minutenlang.
+        $regeln = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -Priority 4
 
         Register-ScheduledTask -TaskName $Name -Action $aktion -Trigger @($ausloeser, $takt, $aufwachen) -Settings $regeln `
             -Description 'Startet Waechter, Server und Overlay der Claude-Ampel bei der Anmeldung.' -Force | Out-Null

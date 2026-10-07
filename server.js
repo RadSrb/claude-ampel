@@ -25,6 +25,10 @@ import { overlaySchliessenMerken, overlayFreigeben } from './lib/overlay-aus.cjs
 import { CODE_PORT_BELEGT } from './lib/watchdog-regel.js';
 import { FELDER, oeffentlich, pruefen, sichern, brauchtNeustart } from './lib/settings.js';
 import { einzelflug, sendenswert } from './lib/takt.js';
+import { normalePrioritaet } from './lib/prioritaet.js';
+
+// Auch ohne Watchdog gestartet (npm run server) nicht unter Normal laufen.
+normalePrioritaet();
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(HERE, 'config.json');
