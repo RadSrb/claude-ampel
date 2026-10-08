@@ -526,6 +526,27 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Session im Terminal (cmd, Windows Terminal): ihr Fenster haengt an der
+    // Konsole des claude-Prozesses. Nie ueber `code --reuse-window` -- das
+    // ersetzt den Ordner im zuletzt aktiven VS-Code-Fenster und beendet die
+    // Session, die dort laeuft.
+    if (row.art === 'terminal') {
+      let antwort = await focusConsole(row.pid);
+      // null heisst: PowerShell kam nicht durch (Zeitlimit unter Last) -- noch einmal.
+      if (antwort === null) antwort = await focusConsole(row.pid);
+      let ok = antwort?.ok === true;
+      let weg = ok ? 'konsole' : null;
+      // Keine sichtbare Konsole: claude laeuft im Terminal eines Editors. Dann
+      // dessen Fenster, aber ohne F13 -- die Taste gehoert dem Chat der Erweiterung.
+      if (!ok && antwort?.error === 'keine sichtbare konsole' && row.hwnd) {
+        ok = await focusWindow(row.hwnd, { taste: false });
+        weg = ok ? 'fenster' : null;
+      }
+      res.writeHead(ok ? 200 : 500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(ok ? { ok, weg } : { ok, error: 'Terminalfenster nicht gefunden' }));
+      return;
+    }
+
     // Erst das genau zugeordnete Fenster. Gibt es keins, ist es vielleicht eine
     // Session im Terminal -- deren Fenster haengt an der Konsole. Sonst
     // uebernimmt die VS-Code-Kommandozeile und holt das Fenster mit diesem
@@ -533,7 +554,7 @@ const server = http.createServer(async (req, res) => {
     let ok = row.hwnd ? await focusWindow(row.hwnd) : false;
     let weg = ok ? 'fenster' : null;
     if (!ok && !row.hwnd) {
-      ok = await focusConsole(row.pid);
+      ok = (await focusConsole(row.pid))?.ok === true;
       weg = ok ? 'konsole' : null;
     }
     if (!ok) {

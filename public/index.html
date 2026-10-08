@@ -289,7 +289,7 @@
         return Math.floor(h / 24) + ' d ' + (h % 24) + ' h';
       }
 
-      function sessionBlock(s, now, alleine, projekt) {
+      function sessionBlock(s, now, alleine, projekt, hinweis) {
         // Nur eine echte Rueckfrage verdient den auffaelligen Kasten. Ein
         // Werkzeugname ist Beiwerk und gehoert in die Fusszeile -- der letzte
         // Text von Claude ist fast immer das Nuetzlichere.
@@ -303,7 +303,12 @@
         // Farbe und Zustand -- dann waere die Kopfzeile hier nur Doppelung.
         // Jede Session traegt den Projektnamen, nie den von Claude Code
         // vergebenen Sitzungstitel -- der wechselt mit jeder Aufgabe.
-        const name = esc(projekt ?? '?');
+        // Ausnahme Terminal: der Ordner ist dort oft nur der Home-Ordner. Allein
+        // traegt die Kachel schon den Titel, dann steht hier "Terminal · Ordner";
+        // sonst unterscheidet erst der Titel die Sessions.
+        const name = esc(
+          s.art === 'terminal' ? (alleine && hinweis ? hinweis : s.title ?? projekt ?? '?') : projekt ?? '?',
+        );
         const kopf = alleine
           ? `<div class="sub-title">${name}</div>`
           : `<div class="sub-top">
@@ -321,7 +326,7 @@
             <span>seit <b data-since="${s.since}">${dauer(now - s.since)}</b></span>
             ${werkzeug}
             <button class="focus" data-session="${esc(s.sessionId)}"
-              title="${s.hwnd ? esc(s.windowTitle ?? '') : 'Kein Fenster eindeutig zugeordnet — öffnet den Ordner über VS Code'}">Fenster</button>
+              title="${s.art === 'terminal' ? 'Holt das Terminalfenster dieser Session nach vorn' : s.hwnd ? esc(s.windowTitle ?? '') : 'Kein Fenster eindeutig zugeordnet — öffnet den Ordner über VS Code'}">Fenster</button>
           </div>
         </div>`;
       }
@@ -393,12 +398,12 @@
             return `<div class="${klassen}">
               <div class="top">
                 <i class="dot ${g.color}"></i>
-                <span class="folder" title="${esc(g.cwd ?? '')}">${esc(g.projekt ?? g.folder ?? '?')}</span>
+                <span class="folder" title="${esc(g.cwd ?? '')}">${esc(g.anzeige ?? g.projekt ?? g.folder ?? '?')}</span>
                 ${alleine ? ring(g.sessions[0].kontext, g.sessions[0].verdichtet) : ''}
                 ${zustandOben}
               </div>
               ${ports ? `<div class="ports">${ports}</div>` : ''}
-              <div class="subs">${g.sessions.map((s) => sessionBlock(s, now, alleine, g.projekt ?? g.folder)).join('')}</div>
+              <div class="subs">${g.sessions.map((s) => sessionBlock(s, now, alleine, g.projekt ?? g.folder, g.hinweis)).join('')}</div>
             </div>`;
           })
           .join('');

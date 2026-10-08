@@ -157,6 +157,22 @@ test('assignWindows laesst Titeltreffer vor Ordnerratern zum Zug kommen', () => 
   assert.equal(zuordnung.get('rater'), undefined);
 });
 
+test('assignWindows: Terminal-Session nimmt einer VS-Code-Session das Fenster nicht weg', () => {
+  // Terminal-Session steht vorn und haette per Ordner zuerst zugegriffen.
+  const rows = [
+    { sessionId: 'cmd', art: 'terminal', title: null, folder: 'WorkExpert' },
+    { sessionId: 'code', art: 'vscode', title: null, folder: 'WorkExpert' },
+  ];
+  const zuordnung = assignWindows(rows, [FENSTER[0]]);
+  assert.equal(zuordnung.get('code').hwnd, 1);
+  assert.equal(zuordnung.get('cmd'), undefined);
+});
+
+test('assignWindows: Terminal-Session trifft nie ueber den Titel', () => {
+  const rows = [{ sessionId: 'cmd', art: 'terminal', title: 'Deploy vorbereiten', folder: 'Alexander' }];
+  assert.equal(assignWindows(rows, FENSTER).get('cmd'), undefined);
+});
+
 test('isAmbiguous erkennt mehrere Fenster im selben Ordner', () => {
   assert.equal(isAmbiguous(FENSTER, { folder: 'Multi-Tenant-Voice-Platform' }), true);
   assert.equal(isAmbiguous(FENSTER, { folder: 'WorkExpert' }), false);

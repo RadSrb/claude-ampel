@@ -3,6 +3,7 @@
 #
 #   powershell -File windows.ps1 list
 #   powershell -File windows.ps1 focus <hwnd>   (holt das Fenster vor und setzt den Schreibfokus)
+#   powershell -File windows.ps1 vor <hwnd>     (holt das Fenster nur vor -- ohne F13)
 #   powershell -File windows.ps1 typeforeground  (wartet auf einen Editor im Vordergrund und setzt dort den Schreibfokus)
 #   powershell -File windows.ps1 konsole <pid>   (holt das Terminalfenster einer CLI-Session vor -- nur im eigenen Prozess)
 #
@@ -81,16 +82,32 @@ public class AmpelWin {
   }
 
   // SetForegroundWindow allein wird von Windows oft ignoriert, wenn der Aufrufer
-  // nicht im Vordergrund ist. Der Thread-Attach-Trick umgeht das zuverlaessig.
+  // nicht im Vordergrund ist. Der Thread-Attach-Trick hilft -- aber nicht immer:
+  // gemessen 2026-10-08 scheiterte er etwa jedes zweite Mal (Edge vorn, Ziel
+  // Windows Terminal). Dann ein wirkungsloser Tastendruck (VK 0x88, keiner
+  // Taste zugeordnet): danach stammt die letzte Eingabe von uns, und Windows
+  // laesst den Wechsel zu.
   public static bool Focus(IntPtr hWnd) {
     if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+    if (Versuch(hWnd)) return true;
+    keybd_event(VK_LEER, 0, 0, UIntPtr.Zero);
+    keybd_event(VK_LEER, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+    return Versuch(hWnd);
+  }
+
+  const byte VK_LEER = 0x88;
+
+  // Erfolg heisst: das Fenster ist wirklich vorn -- der Rueckgabewert von
+  // SetForegroundWindow allein sagt das nicht verlaesslich.
+  static bool Versuch(IntPtr hWnd) {
     uint fgPid;
     uint fgThread = GetWindowThreadProcessId(GetForegroundWindow(), out fgPid);
     uint ownThread = GetCurrentThreadId();
     if (fgThread != ownThread) AttachThreadInput(ownThread, fgThread, true);
-    bool ok = SetForegroundWindow(hWnd);
+    SetForegroundWindow(hWnd);
     if (fgThread != ownThread) AttachThreadInput(ownThread, fgThread, false);
-    return ok;
+    for (int i = 0; i < 20 && GetForegroundWindow() != hWnd; i++) System.Threading.Thread.Sleep(5);
+    return GetForegroundWindow() == hWnd;
   }
 
   // Holt das Fenster nach vorn UND setzt den Schreibfokus ins Claude-Chatfeld.
@@ -174,6 +191,15 @@ if ($Action -eq 'list') {
 if ($Action -eq 'focus') {
   if (-not $Hwnd) { Write-Output '{"ok":false,"error":"kein hwnd"}'; exit 1 }
   $ok = [AmpelWin]::FocusAndType([IntPtr][long]$Hwnd)
+  ConvertTo-Json -InputObject @{ ok = [bool]$ok } -Compress
+  exit 0
+}
+
+# Fuer claude im Terminal eines Editors: das Fenster nach vorn, aber ohne F13 --
+# die Taste oeffnete dort den Chat der Erweiterung statt des Terminals.
+if ($Action -eq 'vor') {
+  if (-not $Hwnd) { Write-Output '{"ok":false,"error":"kein hwnd"}'; exit 1 }
+  $ok = [AmpelWin]::Focus([IntPtr][long]$Hwnd)
   ConvertTo-Json -InputObject @{ ok = [bool]$ok } -Compress
   exit 0
 }

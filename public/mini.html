@@ -374,9 +374,9 @@
                    title="http://localhost:${portListe[0]} im Browser öffnen">:${portListe[0]}</a>`
               : '';
             return `<div class="zeile ${g.color === 'red' ? 'rot' : ''}" data-session="${esc(ziel.sessionId)}"
-                      title="${esc(g.cwd ?? '')}${ziel.title ? ' — ' + esc(ziel.title) : ''}">
+                      title="${g.hinweis ? esc(g.hinweis) + ' — ' : ''}${esc(g.cwd ?? '')}${ziel.title && ziel.title !== g.anzeige ? ' — ' + esc(ziel.title) : ''}">
               <i class="dot ${g.color}"></i>
-              <span class="name">${esc(g.projekt ?? g.folder ?? '?')}</span>
+              <span class="name">${esc(g.anzeige ?? g.projekt ?? g.folder ?? '?')}</span>
               ${portLink}
               ${portWarnung}
               ${ring(ziel.kontext, ziel.verdichtet)}

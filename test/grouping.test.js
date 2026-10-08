@@ -23,6 +23,30 @@ test('eine einzelne Session ergibt eine Gruppe mit einer Untersession', () => {
   assert.equal(g.color, 'green');
 });
 
+test('Terminal-Session: Kachel heisst wie ihr Titel, der Ordner steht im Hinweis', () => {
+  const home = { cwd: 'C:\\Users\\Alexander', folder: 'Alexander', projekt: 'Alexander', art: 'terminal' };
+  const [mitTitel] = groupByProject([row({ ...home, title: 'iPad-Overlay Session-Öffnung im CMD' })]);
+  assert.equal(mitTitel.anzeige, 'iPad-Overlay Session-Öffnung im CMD');
+  assert.equal(mitTitel.hinweis, 'Terminal · Alexander');
+
+  const [ohneTitel] = groupByProject([row({ ...home, title: null })]);
+  assert.equal(ohneTitel.anzeige, 'Alexander');
+  assert.equal(ohneTitel.hinweis, 'Terminal');
+});
+
+test('VS-Code-Session und gemischte Gruppe behalten den Projektnamen', () => {
+  const [code] = groupByProject([row({ art: 'vscode', title: 'Push und deploy' })]);
+  assert.equal(code.anzeige, 'Demo');
+  assert.equal(code.hinweis, null);
+
+  const [gemischt] = groupByProject([
+    row({ sessionId: 'a', art: 'terminal', title: 'Im CMD' }),
+    row({ sessionId: 'b', art: 'vscode', title: 'Im Editor' }),
+  ]);
+  assert.equal(gemischt.anzeige, 'Demo');
+  assert.equal(gemischt.hinweis, null);
+});
+
 test('zwei Sessions im selben Projekt landen in einer Gruppe', () => {
   const gruppen = groupByProject([
     row({ sessionId: 'a' }),
