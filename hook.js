@@ -57,6 +57,7 @@ process.stdin.on('end', () => {
     cwd: payload.cwd ?? null,
     tool_name: payload.tool_name ?? null,
     message: payload.message ?? null,
+    notification_type: payload.notification_type ?? null,
   });
 
   const req = http.request(

@@ -5,8 +5,8 @@ am PC und am Handy.
 
 | Farbe | Zustand | Bedeutung |
 |---|---|---|
-| 🔴 rot | braucht dich | Claude wartet auf eine Freigabe oder Antwort (Notification-Hook) |
-| 🔴 rot | fragt dich | Der Turn ist zu Ende, endet aber mit einer **Frage oder einem Vorschlag** — oder ein Auswahl-Widget bzw. eine Plan-Freigabe steht offen. Laufen nebenher noch Hintergrund-Agenten oder ein Hintergrund-Befehl, bleibt es rot und der Hinweis nennt sie zusätzlich |
+| 🔴 rot | braucht dich | Claude wartet auf eine Freigabe oder Antwort (Notification-Hook). Eine Freigabe-Anfrage ist immer rot; die Leerlauf-Meldung „waiting for your input“ ist gelb, solange Hintergrund-Arbeit läuft |
+| 🔴 rot | fragt dich | Der Turn ist zu Ende, endet aber mit einer **Frage oder einem Vorschlag** — oder ein Auswahl-Widget bzw. eine Plan-Freigabe steht offen. Laufen nebenher noch Hintergrund-Agenten oder ein Hintergrund-Befehl, ist es **gelb** mit Hinweis „Frage offen · Hintergrund-Agenten laufen“ und wird erst rot, wenn die Hintergrund-Arbeit fertig ist |
 | 🔴 rot | steht | Läuft angeblich, rührt sich aber seit 5 Minuten nicht |
 | 🟡 gelb | läuft | Arbeitet gerade — auch wenn der Chat schon fertig aussieht, aber **Hintergrund-Agenten** noch schreiben oder ein **Hintergrund-Befehl** noch läuft |
 | 🟢 grün | fertig | Turn abgeschlossen, wartet auf einen neuen Auftrag |

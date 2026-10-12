@@ -437,12 +437,65 @@ test('ein seit Langem stiller Hintergrund-Agent faerbt eine fertige Session nich
   assert.equal(s.status, 'done');
 });
 
-test('eine Frage bleibt rot, auch wenn Hintergrund-Agenten arbeiten', () => {
+test('eine Frage ist gelb, solange Hintergrund-Agenten arbeiten', () => {
+  // GetInvoice/CRM 12.10.: Schlusstext "Sag Bescheid, wenn ..." plus Opus-Agent
+  // im Hintergrund -- die Kachel stand rot, obwohl der Agent noch schrieb.
   const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
   const ende = { ...turnDone, timestamp: new Date(Date.now() - MINUTE).toISOString() };
   const [s] = store.update([sess({ subagentMtime: Date.now() - 2000, tail: tail({ lastTurn: ende, frage: true }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.color, 'yellow');
+  assert.equal(s.note, 'Frage offen · Hintergrund-Agenten laufen');
+});
+
+test('ist der Hintergrund-Agent fertig, wird die offene Frage rot', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 20 * MINUTE).toISOString() };
+  // Letzte Zeile des Agenten vor 6 Minuten -- laenger als die Steht-Schwelle.
+  const [s] = store.update([sess({ subagentMtime: Date.now() - 6 * MINUTE, tail: tail({ lastTurn: ende, frage: true }) })]);
   assert.equal(s.status, 'question');
-  assert.equal(s.note, 'Hintergrund-Agenten laufen');
+  assert.equal(s.color, 'red');
+  assert.equal(s.note, null);
+});
+
+test('ein offenes Auswahl-Widget ist gelb, solange ein Hintergrund-Agent schreibt, danach rot', () => {
+  const store = new StateStore(CFG);
+  const widget = { ...turnTool, toolName: 'AskUserQuestion', wartet: true, timestamp: new Date(Date.now() - MINUTE).toISOString() };
+  let [s] = store.update([sess({ subagentMtime: Date.now() - 2000, tail: tail({ lastTurn: widget }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'Auswahl offen · Hintergrund-Agenten laufen');
+  [s] = store.update([sess({ subagentMtime: Date.now() - 6 * MINUTE, tail: tail({ lastTurn: widget }) })]);
+  assert.equal(s.status, 'question');
+});
+
+test('die Leerlauf-Meldung ist gelb, solange ein Hintergrund-Agent arbeitet, danach rot', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude is waiting for your input', notification_type: 'idle_prompt' });
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 2 * MINUTE).toISOString() };
+  let [s] = store.update([sess({ subagentMtime: Date.now() - 2000, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'wartet auf dich · Hintergrund-Agenten laufen');
+  [s] = store.update([sess({ subagentMtime: Date.now() - 6 * MINUTE, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'attention');
+});
+
+test('eine Freigabe-Anfrage bleibt rot, auch wenn Hintergrund-Agenten arbeiten', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' });
+  const anfrage = store.hookState.get('s1').since;
+  const ende = { ...turnDone, timestamp: new Date(anfrage - MINUTE).toISOString() };
+  const [s] = store.update([sess({ subagentMtime: Date.now() - 2000, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'attention');
+});
+
+test('Leerlauf-Meldung ohne notification_type wird am Text erkannt', async () => {
+  const { istLeerlauf } = await import('../lib/state.js');
+  assert.equal(istLeerlauf({ message: 'Claude is waiting for your input' }), true);
+  assert.equal(istLeerlauf({ message: 'Claude needs your permission to use Bash' }), false);
+  assert.equal(istLeerlauf({ message: 'Claude is waiting for your input', notification_type: 'permission_prompt' }), false);
 });
 
 test('eine Frage ohne Hintergrund-Arbeit bekommt keinen Zusatz', () => {
@@ -475,13 +528,15 @@ test('ohne offenen Hintergrund-Befehl bleibt die fertige Session gruen', () => {
   assert.equal(s.status, 'done');
 });
 
-test('eine Frage bleibt rot, auch wenn ein Hintergrund-Befehl laeuft', () => {
+test('eine Frage ist gelb, solange ein Hintergrund-Befehl laeuft -- auch wenn er lange schweigt', () => {
   const store = new StateStore(CFG);
-  const ende = { ...turnDone, timestamp: new Date(Date.now() - MINUTE).toISOString() };
-  const lauf = { id: 'b1', art: 'befehl', start: Date.now() - 5 * MINUTE };
-  const [s] = store.update([sess({ hintergrundBefehle: [lauf], tail: tail({ lastTurn: ende, frage: true }) })]);
-  assert.equal(s.status, 'question');
-  assert.equal(s.note, 'Hintergrund-Befehl laeuft');
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 10 * MINUTE).toISOString() };
+  const lauf = { id: 'b1', art: 'befehl', start: Date.now() - 11 * MINUTE };
+  const [s] = store.update([
+    sess({ hintergrundBefehle: [lauf], tail: tail({ lastTurn: ende, frage: true, mtime: new Date(Date.now() - 10 * MINUTE) }) }),
+  ]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'Frage offen · Hintergrund-Befehl laeuft');
 });
 
 test('ein seit Langem stiller Subagent kippt trotzdem auf rot', () => {
