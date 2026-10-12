@@ -442,6 +442,15 @@ test('eine Frage bleibt rot, auch wenn Hintergrund-Agenten arbeiten', () => {
   const ende = { ...turnDone, timestamp: new Date(Date.now() - MINUTE).toISOString() };
   const [s] = store.update([sess({ subagentMtime: Date.now() - 2000, tail: tail({ lastTurn: ende, frage: true }) })]);
   assert.equal(s.status, 'question');
+  assert.equal(s.note, 'Hintergrund-Agenten laufen');
+});
+
+test('eine Frage ohne Hintergrund-Arbeit bekommt keinen Zusatz', () => {
+  const store = new StateStore(CFG);
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - MINUTE).toISOString() };
+  const [s] = store.update([sess({ tail: tail({ lastTurn: ende, frage: true }) })]);
+  assert.equal(s.status, 'question');
+  assert.equal(s.note, null);
 });
 
 test('ein laufender Hintergrund-Befehl haelt eine Session mit beendetem Turn gelb', () => {
@@ -472,6 +481,7 @@ test('eine Frage bleibt rot, auch wenn ein Hintergrund-Befehl laeuft', () => {
   const lauf = { id: 'b1', art: 'befehl', start: Date.now() - 5 * MINUTE };
   const [s] = store.update([sess({ hintergrundBefehle: [lauf], tail: tail({ lastTurn: ende, frage: true }) })]);
   assert.equal(s.status, 'question');
+  assert.equal(s.note, 'Hintergrund-Befehl laeuft');
 });
 
 test('ein seit Langem stiller Subagent kippt trotzdem auf rot', () => {
