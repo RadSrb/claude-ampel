@@ -138,6 +138,8 @@
       .anzahl:hover { color: var(--text); background: rgba(255, 255, 255, 0.18); }
 
       /* Unterzeilen: jede Session eines Fensters mit eigenem Punkt. */
+      .zeile.gelbkopf { margin-top: 4px; }
+      .zeile.gelbkopf .name { color: var(--yellow); }
       .zeile.unter { padding: 4px 10px 4px 26px; font-size: 11.5px; }
       .zeile.unter .name { color: var(--muted); }
       .zeit {
@@ -212,6 +214,14 @@
         aufgeklappt = new Set(JSON.parse(localStorage.getItem('aufgeklappt') ?? '[]'));
       } catch {
         /* leer anfangen */
+      }
+
+      // Gelb-Bereich auf/zu -- bleibt ueber Neuladen erhalten, Standard zu.
+      let gelbAuf = false;
+      try {
+        gelbAuf = localStorage.getItem('gelbAuf') === '1';
+      } catch {
+        /* zu lassen */
       }
 
       function dauer(ms) {
@@ -314,6 +324,51 @@
       window.addEventListener('pointercancel', losgelassen);
       window.addEventListener('blur', losgelassen);
 
+      function gruppenZeile(g, now) {
+      // Anspringbar ist die dringendste Session der Gruppe -- das ist die,
+      // wegen der man ueberhaupt hinschaut.
+      const ziel = g.sessions[0];
+      const offen = g.sessions.length > 1 && aufgeklappt.has(g.key);
+      const mehr =
+        g.sessions.length > 1
+          ? `<button class="anzahl" data-gruppe="${esc(g.key)}" title="${offen ? 'Sessions zuklappen' : 'Alle Sessions zeigen'}">${offen ? '▾' : '▸'}${g.sessions.length}</button>`
+          : '';
+      const unter = offen
+        ? g.sessions
+            .map(
+              (s, i) => `<div class="zeile unter ${s.color === 'red' ? 'rot' : ''}" data-session="${esc(s.sessionId)}"
+                title="${esc(s.lastText ?? s.title ?? '')}">
+                <i class="dot ${s.color}"></i>
+                <span class="name">${esc(s.title ?? s.name ?? `Session ${i + 1}`)} · ${LABEL[s.status] ?? s.status}</span>
+                ${ring(s.kontext, s.verdichtet)}
+                <span class="zeit" data-since="${s.since}">${dauer(now - s.since)}</span>
+              </div>`,
+            )
+            .join('')
+        : '';
+      const portListe = g.ports ?? [];
+      const portWarnung =
+        portListe.length > 1
+          ? `<span class="zuviel" title="${portListe.length} Dev-Server in diesem Projekt: ${portListe.join(', ')} — es sollte genau einer sein">⚠</span>`
+          : '';
+      // Der niedrigste Port ist bei Next, Vite & Co. der echte Dev-Server;
+      // die hoeheren sind Hilfsprozesse oder Leichen.
+      const portLink = portListe.length
+        ? `<a class="port" href="http://localhost:${portListe[0]}" target="_blank" rel="noopener"
+             title="http://localhost:${portListe[0]} im Browser öffnen">:${portListe[0]}</a>`
+        : '';
+      return `<div class="zeile ${g.color === 'red' ? 'rot' : ''}" data-session="${esc(ziel.sessionId)}"
+                title="${g.hinweis ? esc(g.hinweis) + ' — ' : ''}${esc(g.cwd ?? '')}${ziel.title && ziel.title !== g.anzeige ? ' — ' + esc(ziel.title) : ''}">
+        <i class="dot ${g.color}"></i>
+        <span class="name">${esc(g.anzeige ?? g.projekt ?? g.folder ?? '?')}</span>
+        ${portLink}
+        ${portWarnung}
+        ${ring(ziel.kontext, ziel.verdichtet)}
+        ${mehr}
+        <span class="zeit" data-since="${g.since}">${dauer(now - g.since)}</span>
+      </div>${unter}`;
+      }
+
       function render() {
         if (gedrueckt) {
           nachholen = true;
@@ -334,57 +389,23 @@
           liste.innerHTML = '<div class="weg">keine Verbindung</div>';
           return;
         }
-        if (!projekte.length) {
+        const gelbProjekte = snapshot.gelb?.projects ?? [];
+        const gelbAnzahl = (snapshot.gelb?.sessions ?? []).length;
+        // Gelb: eingeklappte Zeile unter der Hauptliste, Standard zu; bei 0 weg.
+        const gelbHtml = gelbAnzahl
+          ? `<div class="zeile gelbkopf" data-gelb="1" title="Gelbe Sessions ${gelbAuf ? 'zuklappen' : 'aufklappen'}">
+               <i class="dot yellow"></i>
+               <span class="name">Gelb (${gelbAnzahl})</span>
+               <span class="anzahl">${gelbAuf ? '▾' : '▸'}</span>
+             </div>` + (gelbAuf ? gelbProjekte.map((g) => gruppenZeile(g, now)).join('') : '')
+          : '';
+
+        if (!projekte.length && !gelbAnzahl) {
           liste.innerHTML = '<div class="leer">keine Session</div>';
           return;
         }
 
-        liste.innerHTML = projekte
-          .map((g) => {
-            // Anspringbar ist die dringendste Session der Gruppe -- das ist die,
-            // wegen der man ueberhaupt hinschaut.
-            const ziel = g.sessions[0];
-            const offen = g.sessions.length > 1 && aufgeklappt.has(g.key);
-            const mehr =
-              g.sessions.length > 1
-                ? `<button class="anzahl" data-gruppe="${esc(g.key)}" title="${offen ? 'Sessions zuklappen' : 'Alle Sessions zeigen'}">${offen ? '▾' : '▸'}${g.sessions.length}</button>`
-                : '';
-            const unter = offen
-              ? g.sessions
-                  .map(
-                    (s, i) => `<div class="zeile unter ${s.color === 'red' ? 'rot' : ''}" data-session="${esc(s.sessionId)}"
-                      title="${esc(s.lastText ?? s.title ?? '')}">
-                      <i class="dot ${s.color}"></i>
-                      <span class="name">${esc(s.title ?? s.name ?? `Session ${i + 1}`)} · ${LABEL[s.status] ?? s.status}</span>
-                      ${ring(s.kontext, s.verdichtet)}
-                      <span class="zeit" data-since="${s.since}">${dauer(now - s.since)}</span>
-                    </div>`,
-                  )
-                  .join('')
-              : '';
-            const portListe = g.ports ?? [];
-            const portWarnung =
-              portListe.length > 1
-                ? `<span class="zuviel" title="${portListe.length} Dev-Server in diesem Projekt: ${portListe.join(', ')} — es sollte genau einer sein">⚠</span>`
-                : '';
-            // Der niedrigste Port ist bei Next, Vite & Co. der echte Dev-Server;
-            // die hoeheren sind Hilfsprozesse oder Leichen.
-            const portLink = portListe.length
-              ? `<a class="port" href="http://localhost:${portListe[0]}" target="_blank" rel="noopener"
-                   title="http://localhost:${portListe[0]} im Browser öffnen">:${portListe[0]}</a>`
-              : '';
-            return `<div class="zeile ${g.color === 'red' ? 'rot' : ''}" data-session="${esc(ziel.sessionId)}"
-                      title="${g.hinweis ? esc(g.hinweis) + ' — ' : ''}${esc(g.cwd ?? '')}${ziel.title && ziel.title !== g.anzeige ? ' — ' + esc(ziel.title) : ''}">
-              <i class="dot ${g.color}"></i>
-              <span class="name">${esc(g.anzeige ?? g.projekt ?? g.folder ?? '?')}</span>
-              ${portLink}
-              ${portWarnung}
-              ${ring(ziel.kontext, ziel.verdichtet)}
-              ${mehr}
-              <span class="zeit" data-since="${g.since}">${dauer(now - g.since)}</span>
-            </div>${unter}`;
-          })
-          .join('');
+        liste.innerHTML = (projekte.length ? projekte.map((g) => gruppenZeile(g, now)).join('') : '<div class="leer">keine Session</div>') + gelbHtml;
       }
 
       setInterval(() => {
@@ -401,6 +422,16 @@
         // Ein Klick auf den Port oeffnet die Seite -- er darf nicht zusaetzlich
         // das VS-Code-Fenster nach vorn holen.
         if (ev.target.closest('a')) return;
+        if (ev.target.closest('[data-gelb]')) {
+          gelbAuf = !gelbAuf;
+          try {
+            localStorage.setItem('gelbAuf', gelbAuf ? '1' : '0');
+          } catch {
+            /* dann eben nur bis zum Neuladen */
+          }
+          render();
+          return;
+        }
         const knopf = ev.target.closest('[data-gruppe]');
         if (knopf) {
           const key = knopf.dataset.gruppe;

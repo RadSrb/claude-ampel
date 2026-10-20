@@ -12,7 +12,7 @@ am PC und am Handy.
 | 🟢 grün | fertig | Turn abgeschlossen, wartet auf einen neuen Auftrag |
 | ⚪ grau | unbekannt | Kein Transkript vorhanden |
 
-> **Anzeige:** gelbe Sessions werden nicht angezeigt (weder Kachel noch Zähler). Intern bleiben sie gelb; sobald eine Session rot oder grün wird, erscheint sie wieder. Der Filter sitzt in `ohneGelb()` (`lib/grouping.js`), Push ist davon unberührt.
+> **Anzeige:** gelbe Sessions stehen nicht in der Hauptliste und zählen nicht (Kachel, Zähler, Gesamtfarbe), sind aber in Dashboard und Overlay unter "Gelb (n) ▸" aufklappbar (Zustand im localStorage, Standard zu; im Snapshot als `gelb`). Intern bleiben sie gelb; sobald eine Session rot oder grün wird, erscheint sie wieder. Der Filter sitzt in `ohneGelb()` (`lib/grouping.js`), Push ist davon unberührt.
 
 Neben jedem Namen sitzt ein **Kontext-Ring** wie im Compact-Fenster von Claude
 Code: der gefüllte Anteil zeigt, wie voll der Kontext ist, bevor verdichtet wird.

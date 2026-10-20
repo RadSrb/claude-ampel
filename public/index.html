@@ -236,6 +236,19 @@
       button.focus:hover:not(:disabled) { border-color: #5b6577; background: #262c37; }
       button.focus:disabled { opacity: 0.4; cursor: default; }
 
+      .gelbbereich { margin-top: 22px; }
+      .gelbkopf {
+        background: none;
+        border: 1px solid var(--line);
+        border-left: 7px solid var(--yellow);
+        border-radius: 10px;
+        color: var(--yellow);
+        font: inherit;
+        font-weight: 650;
+        padding: 9px 15px;
+        cursor: pointer;
+        margin-bottom: 12px;
+      }
       .foot { margin-top: 26px; color: var(--muted); font-size: 13px; }
       .orphans { margin-bottom: 16px; }
       .hint { opacity: 0.65; }
@@ -255,6 +268,10 @@
     </header>
 
     <div class="grid" id="grid"></div>
+    <div class="gelbbereich" id="gelbBereich" hidden>
+      <button class="gelbkopf" id="gelbKopf" type="button" aria-expanded="false"></button>
+      <div class="grid" id="gelbGrid" hidden></div>
+    </div>
     <div class="empty" id="empty" hidden>Keine laufende Claude-Code-Session gefunden.</div>
 
     <div class="foot" id="foot"></div>
@@ -277,6 +294,26 @@
       const empty = document.getElementById('empty');
 
       let snapshot = { sessions: [], otherPorts: [] };
+
+      // Gelb-Bereich auf/zu -- bleibt im Browser erhalten, Standard zu.
+      let gelbAuf = false;
+      try {
+        gelbAuf = localStorage.getItem('gelbAuf') === '1';
+      } catch {
+        /* zu lassen */
+      }
+      const gelbBereich = document.getElementById('gelbBereich');
+      const gelbKopf = document.getElementById('gelbKopf');
+      const gelbGrid = document.getElementById('gelbGrid');
+      gelbKopf.addEventListener('click', () => {
+        gelbAuf = !gelbAuf;
+        try {
+          localStorage.setItem('gelbAuf', gelbAuf ? '1' : '0');
+        } catch {
+          /* dann eben nur bis zum Neuladen */
+        }
+        render();
+      });
 
       function dauer(ms) {
         if (!Number.isFinite(ms) || ms < 0) return '–';
@@ -362,6 +399,35 @@
           (l.proModell ?? []).map((m) => topf(m.name, { prozent: m.prozent, resetsAt: l.woche?.resetsAt })).join('');
       }
 
+      function karte(g, now) {
+        const alleine = g.sessions.length === 1;
+        const abgeleitet = g.sessions.every((s) => s.source !== 'hook');
+        const klassen = ['card', g.color, abgeleitet ? 'derived' : 'hook'].join(' ');
+        const portListe = g.ports ?? [];
+        const warnung =
+          portListe.length > 1
+            ? `<span class="zuviel" title="Pro Projekt sollte genau ein Dev-Server laufen. Die übrigen sind meist Leichen aus früheren Sitzungen und liefern einen veralteten Build aus.">⚠ ${portListe.length} Server</span>`
+            : '';
+        const ports =
+          portListe
+            .map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">localhost:${p}</a>`)
+            .join('') + warnung;
+        const zustandOben = alleine
+          ? `<span class="state ${g.color}">${LABEL[g.status]}${g.sessions[0].source === 'hook' ? '' : ' ≈'}</span>`
+          : `<span class="anzahl">${g.sessions.length} Sessions</span>`;
+
+        return `<div class="${klassen}">
+          <div class="top">
+            <i class="dot ${g.color}"></i>
+            <span class="folder" title="${esc(g.cwd ?? '')}">${esc(g.anzeige ?? g.projekt ?? g.folder ?? '?')}</span>
+            ${alleine ? ring(g.sessions[0].kontext, g.sessions[0].verdichtet) : ''}
+            ${zustandOben}
+          </div>
+          ${ports ? `<div class="ports">${ports}</div>` : ''}
+          <div class="subs">${g.sessions.map((s) => sessionBlock(s, now, alleine, g.projekt ?? g.folder, g.hinweis)).join('')}</div>
+        </div>`;
+      }
+
       function render() {
         const now = Date.now();
         const projekte = snapshot.projects ?? [];
@@ -377,36 +443,16 @@
 
         empty.hidden = sessions.length > 0;
 
-        grid.innerHTML = projekte
-          .map((g) => {
-            const alleine = g.sessions.length === 1;
-            const abgeleitet = g.sessions.every((s) => s.source !== 'hook');
-            const klassen = ['card', g.color, abgeleitet ? 'derived' : 'hook'].join(' ');
-            const portListe = g.ports ?? [];
-            const warnung =
-              portListe.length > 1
-                ? `<span class="zuviel" title="Pro Projekt sollte genau ein Dev-Server laufen. Die übrigen sind meist Leichen aus früheren Sitzungen und liefern einen veralteten Build aus.">⚠ ${portListe.length} Server</span>`
-                : '';
-            const ports =
-              portListe
-                .map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">localhost:${p}</a>`)
-                .join('') + warnung;
-            const zustandOben = alleine
-              ? `<span class="state ${g.color}">${LABEL[g.status]}${g.sessions[0].source === 'hook' ? '' : ' ≈'}</span>`
-              : `<span class="anzahl">${g.sessions.length} Sessions</span>`;
+        grid.innerHTML = projekte.map((g) => karte(g, now)).join('');
 
-            return `<div class="${klassen}">
-              <div class="top">
-                <i class="dot ${g.color}"></i>
-                <span class="folder" title="${esc(g.cwd ?? '')}">${esc(g.anzeige ?? g.projekt ?? g.folder ?? '?')}</span>
-                ${alleine ? ring(g.sessions[0].kontext, g.sessions[0].verdichtet) : ''}
-                ${zustandOben}
-              </div>
-              ${ports ? `<div class="ports">${ports}</div>` : ''}
-              <div class="subs">${g.sessions.map((s) => sessionBlock(s, now, alleine, g.projekt ?? g.folder, g.hinweis)).join('')}</div>
-            </div>`;
-          })
-          .join('');
+        // Gelb: eingeklappt, bei Bedarf aufklappbar; ohne gelbe Sessions ganz weg.
+        const gelbProjekte = snapshot.gelb?.projects ?? [];
+        const gelbAnzahl = (snapshot.gelb?.sessions ?? []).length;
+        gelbBereich.hidden = gelbAnzahl === 0;
+        gelbKopf.textContent = `${gelbAuf ? '▾' : '▸'} Gelb (${gelbAnzahl})`;
+        gelbKopf.setAttribute('aria-expanded', String(gelbAuf));
+        gelbGrid.hidden = !gelbAuf;
+        gelbGrid.innerHTML = gelbAuf ? gelbProjekte.map((g) => karte(g, now)).join('') : '';
 
         const rest = snapshot.otherPorts ?? [];
         const verwaist = snapshot.orphans ?? [];

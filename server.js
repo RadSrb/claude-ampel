@@ -16,7 +16,7 @@ import { StateStore } from './lib/state.js';
 import { listPorts, portsForCwd, unmatchedPorts } from './lib/ports.js';
 import { listWindows, assignWindows, focusWindow, focusConsole, focusViaCode, isAmbiguous } from './lib/windows.js';
 import { vorwaermen } from './lib/shell.js';
-import { groupByProject, istAgentSession, ohneGelb } from './lib/grouping.js';
+import { groupByProject, istAgentSession, nurGelb, ohneGelb } from './lib/grouping.js';
 import { nutzung } from './lib/usage.js';
 import { loadOrCreateSecrets, tokenGleich } from './lib/secrets.js';
 import { PushDienst } from './lib/push.js';
@@ -200,7 +200,7 @@ const store = new StateStore({
 
 /** @type {Set<import('node:http').ServerResponse>} */
 const clients = new Set();
-let snapshot = { projects: [], sessions: [], orphans: [], otherPorts: [], limit: null, updatedAt: 0 };
+let snapshot = { projects: [], sessions: [], gelb: { projects: [], sessions: [] }, orphans: [], otherPorts: [], limit: null, updatedAt: 0 };
 let lastPayload = '';
 // Letzter Stand von Ports und Fenstern -- bleibt stehen, solange niemand zuschaut.
 let letztePorts = [];
@@ -262,11 +262,15 @@ async function taktLauf() {
   // Push und Hintergrund-Logik oben/unten arbeiten mit allen Sessions; nur die
   // Anzeige blendet gelbe aus.
   const angezeigt = ohneGelb(eigene);
+  // Gelbe Sessions liefert der Snapshot getrennt; Zaehler und Gesamtfarbe
+  // bleiben bei der Hauptliste, Gelb zaehlt dort nicht mit.
+  const gelbe = nurGelb(eigene);
 
   snapshot = {
     projects: groupByProject(angezeigt),
     limit,
     sessions: angezeigt,
+    gelb: { projects: groupByProject(gelbe), sessions: gelbe },
     otherPorts: unmatchedPorts(
       ports,
       sichtbar.map((r) => r.cwd).filter(Boolean),

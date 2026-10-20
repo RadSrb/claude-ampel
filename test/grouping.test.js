@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { groupByProject, istAgentSession, ohneGelb } from '../lib/grouping.js';
+import { groupByProject, istAgentSession, nurGelb, ohneGelb } from '../lib/grouping.js';
 
 function row(over = {}) {
   return {
@@ -148,4 +148,16 @@ test('ohneGelb blendet gelbe Sessions aus, rot und gruen bleiben', () => {
   const [g] = groupByProject(ohneGelb([rows[1], rows[2]]));
   assert.equal(g.color, 'green');
   assert.equal(groupByProject(ohneGelb([rows[1]])).length, 0);
+});
+
+test('nurGelb liefert genau die gelben Sessions, getrennt von der Hauptliste', () => {
+  const rows = [
+    row({ sessionId: 'a', color: 'yellow', status: 'running' }),
+    row({ sessionId: 'b', color: 'red', status: 'attention' }),
+    row({ sessionId: 'c', color: 'yellow', status: 'stalled', cwd: 'c:\Projekte\Zwei', folder: 'Zwei' }),
+  ];
+  assert.deepEqual(nurGelb(rows).map((r) => r.sessionId), ['a', 'c']);
+  assert.equal(groupByProject(nurGelb(rows)).length, 2);
+  // Zusammen ergeben beide Listen alle Sessions, ohne Ueberschneidung.
+  assert.equal(ohneGelb(rows).length + nurGelb(rows).length, rows.length);
 });
