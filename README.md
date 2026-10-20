@@ -10,9 +10,9 @@ am PC und am Handy.
 | 🔴 rot | steht | Läuft angeblich, rührt sich aber seit 5 Minuten nicht |
 | 🟡 gelb | läuft | Arbeitet gerade — auch wenn der Chat schon fertig aussieht, aber **Hintergrund-Agenten** noch schreiben oder ein **Hintergrund-Befehl** noch läuft |
 | 🟢 grün | fertig | Turn abgeschlossen, wartet auf einen neuen Auftrag |
+| ⚪ grau | unbekannt | Kein Transkript vorhanden |
 
 > **Anzeige:** gelbe Sessions werden nicht angezeigt (weder Kachel noch Zähler). Intern bleiben sie gelb; sobald eine Session rot oder grün wird, erscheint sie wieder. Der Filter sitzt in `ohneGelb()` (`lib/grouping.js`), Push ist davon unberührt.
-| ⚪ grau | unbekannt | Kein Transkript vorhanden |
 
 Neben jedem Namen sitzt ein **Kontext-Ring** wie im Compact-Fenster von Claude
 Code: der gefüllte Anteil zeigt, wie voll der Kontext ist, bevor verdichtet wird.
