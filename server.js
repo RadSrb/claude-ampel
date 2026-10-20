@@ -16,7 +16,7 @@ import { StateStore } from './lib/state.js';
 import { listPorts, portsForCwd, unmatchedPorts } from './lib/ports.js';
 import { listWindows, assignWindows, focusWindow, focusConsole, focusViaCode, isAmbiguous } from './lib/windows.js';
 import { vorwaermen } from './lib/shell.js';
-import { groupByProject, istAgentSession } from './lib/grouping.js';
+import { groupByProject, istAgentSession, ohneGelb } from './lib/grouping.js';
 import { nutzung } from './lib/usage.js';
 import { loadOrCreateSecrets, tokenGleich } from './lib/secrets.js';
 import { PushDienst } from './lib/push.js';
@@ -259,10 +259,14 @@ async function taktLauf() {
   // trotzdem, sonst landete ihr Fenster bei einer eigenen Session.
   const eigene = sichtbar.filter((r) => !istAgentSession(r.cwd, CONFIG.agentOrdner));
 
+  // Push und Hintergrund-Logik oben/unten arbeiten mit allen Sessions; nur die
+  // Anzeige blendet gelbe aus.
+  const angezeigt = ohneGelb(eigene);
+
   snapshot = {
-    projects: groupByProject(eigene),
+    projects: groupByProject(angezeigt),
     limit,
-    sessions: eigene,
+    sessions: angezeigt,
     otherPorts: unmatchedPorts(
       ports,
       sichtbar.map((r) => r.cwd).filter(Boolean),

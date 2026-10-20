@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { groupByProject, istAgentSession } from '../lib/grouping.js';
+import { groupByProject, istAgentSession, ohneGelb } from '../lib/grouping.js';
 
 function row(over = {}) {
   return {
@@ -135,4 +135,17 @@ test('ein aehnlich benannter Nachbarordner ist keine Agenten-Session', () => {
   assert.equal(istAgentSession('C:\\Projekte\\01WebsiteAlt\\Demo', ordner), false);
   assert.equal(istAgentSession('C:\\Projekte\\ClaudeAmpel', ordner), false);
   assert.equal(istAgentSession(null, ordner), false);
+});
+
+test('ohneGelb blendet gelbe Sessions aus, rot und gruen bleiben', () => {
+  const rows = [
+    row({ sessionId: 'a', color: 'red', status: 'attention' }),
+    row({ sessionId: 'b', color: 'yellow', status: 'running' }),
+    row({ sessionId: 'c', color: 'green', status: 'done' }),
+  ];
+  assert.deepEqual(ohneGelb(rows).map((r) => r.sessionId), ['a', 'c']);
+  // Gruppe aus gelb+gruen zeigt gruen, nicht gelb.
+  const [g] = groupByProject(ohneGelb([rows[1], rows[2]]));
+  assert.equal(g.color, 'green');
+  assert.equal(groupByProject(ohneGelb([rows[1]])).length, 0);
 });
