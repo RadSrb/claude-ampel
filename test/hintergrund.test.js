@@ -168,3 +168,22 @@ test('ein automatisch in den Hintergrund geschobener Befehl wird ebenso gezaehlt
   const buch = lauf([aufruf, bashGestartet('toolu_1', 'b1')]);
   assert.equal(offene(buch, { now: T0 + MINUTE }).length, 1);
 });
+
+test('ein Hintergrund-Agent ist offen, bis seine Abschlussmeldung kommt', () => {
+  // exusConnect 21.10.: Stop bei laufendem Hintergrund-Agenten -- der schwieg
+  // laenger als die Steht-Schwelle, die Kachel stand gruen.
+  const start = {
+    type: 'user',
+    timestamp: iso(T0),
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_a', content: 'Async agent launched successfully.' }] },
+    toolUseResult: { isAsync: true, status: 'async_launched', agentId: 'ab735ab6eafc34abd', description: 'Reel-Skript pruefen' },
+  };
+  const buch = lauf([start]);
+  const offen = offene(buch, { now: T0 + 20 * MINUTE });
+  assert.equal(offen.length, 1);
+  assert.equal(offen[0].art, 'agent');
+  assert.equal(offen[0].beschreibung, 'Reel-Skript pruefen');
+
+  buchen(buch, { type: 'queue-operation', operation: 'enqueue', content: meldung('ab735ab6eafc34abd', 'completed') });
+  assert.equal(offene(buch, { now: T0 + 20 * MINUTE }).length, 0);
+});

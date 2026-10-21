@@ -556,3 +556,21 @@ test('nach einer erledigten Freigabe verschwindet auch ihr Hinweistext', () => {
   assert.equal(s.status, 'running');
   assert.equal(s.note, 'Write');
 });
+
+test('Stop bei laufendem Hintergrund-Agenten ist nicht fertig, erst sein Ende macht gruen', () => {
+  // exusConnect 21.10.2026: der Agent schwieg laenger als die Steht-Schwelle
+  // (kein frisches Subagent-Transkript), die Kachel stand trotzdem gruen.
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  const ende = { ...turnDone, timestamp: new Date(Date.now() - 20 * MINUTE).toISOString() };
+  const t = tail({ lastTurn: ende, mtime: new Date(Date.now() - 20 * MINUTE) });
+  const agent = { id: 'ab735ab6eafc34abd', art: 'agent', start: Date.now() - 25 * MINUTE, beschreibung: 'Review' };
+
+  let [s] = store.update([sess({ hintergrundBefehle: [agent], tail: t })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'Hintergrund-Agenten');
+
+  // Agent beendet (Meldung im Transkript): jetzt fertig.
+  [s] = store.update([sess({ hintergrundBefehle: [], tail: t })]);
+  assert.equal(s.status, 'done');
+});

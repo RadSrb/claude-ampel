@@ -721,3 +721,27 @@ test('scan sieht Subagenten auch, wenn zuletzt eine Nachricht kam statt eines We
   const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
   assert.ok(s.subagentMtime > 0);
 });
+
+test('scan haelt einen Hintergrund-Agenten offen, bis seine Abschlussmeldung kommt', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 112, sessionId: 's-ag', cwd: 'c:\Projekte\Agenten', startedAt: 1 });
+  const jetzt = new Date().toISOString();
+  const file = writeTranscript(root, 'c--Projekte-Agenten', 's-ag', [
+    {
+      type: 'user',
+      timestamp: jetzt,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'Async agent launched successfully.' }] },
+      toolUseResult: { isAsync: true, status: 'async_launched', agentId: 'a1', description: 'Review' },
+    },
+    { type: 'assistant', timestamp: jetzt, message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Agent laeuft.' }] } },
+  ]);
+  let [s] = scan({ claudeDir: root, livePids: new Set([112]) });
+  assert.equal(s.hintergrundBefehle.length, 1);
+  assert.equal(s.hintergrundBefehle[0].art, 'agent');
+  fs.appendFileSync(
+    file,
+    JSON.stringify({ type: 'queue-operation', operation: 'enqueue', content: '<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n</task-notification>' }) + '\n',
+  );
+  [s] = scan({ claudeDir: root, livePids: new Set([112]) });
+  assert.deepEqual(s.hintergrundBefehle, []);
+});
