@@ -151,6 +151,33 @@ test('parallele Aufrufe: ein Ergebnis da, der zweite Befehl laeuft noch', () => 
 
   const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
   assert.equal(Math.round(s.subagentBefehlMtime / 1000), Math.round(vorhin.getTime() / 1000));
+  // Dieselbe Datei steht auch in der Subagenten-Liste fuer die Freigabe-Pruefung.
+  assert.equal(s.subagenten.length, 1);
+  assert.equal(s.subagenten[0].offen, true);
+  assert.equal(Math.round(s.subagenten[0].mtime / 1000), Math.round(vorhin.getTime() / 1000));
+});
+
+test('ein Subagent von vor einer Stunde wartet nicht mehr auf einen Befehl, steht aber in der Subagenten-Liste', () => {
+  // Die Befehls-Geduld endet nach 30 Minuten; eine offene Freigabe kann laenger stehen.
+  const root = makeFixture();
+  writeSession(root, { pid: 111, sessionId: 's-alt', cwd: 'c:\\Projekte\\Agenten', startedAt: 1 });
+  writeTranscript(root, 'c--Projekte-Agenten', 's-alt', [
+    { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Agent laeuft.' }] } },
+  ]);
+  const dir = path.join(root, 'projects', 'c--Projekte-Agenten', 's-alt', 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  const datei = path.join(dir, 'agent-b.jsonl');
+  fs.writeFileSync(
+    datei,
+    JSON.stringify({ type: 'assistant', message: { id: 'm1', role: 'assistant', stop_reason: null, content: [{ type: 'tool_use', id: 't1', name: 'mcp__claude-in-chrome__navigate', input: {} }] } }) + '\n',
+  );
+  const vorhin = new Date(Date.now() - 60 * 60 * 1000);
+  fs.utimesSync(datei, vorhin, vorhin);
+
+  const [s] = scan({ claudeDir: root, livePids: new Set([111]) });
+  assert.equal(s.subagentBefehlMtime, null);
+  assert.equal(s.subagenten.length, 1);
+  assert.equal(s.subagenten[0].offen, true);
 });
 
 test('parallele Aufrufe: beide Ergebnisse da, nichts wartet mehr', () => {

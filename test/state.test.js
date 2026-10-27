@@ -491,6 +491,79 @@ test('eine Freigabe-Anfrage bleibt rot, auch wenn Hintergrund-Agenten arbeiten',
   assert.equal(s.status, 'attention');
 });
 
+test('die Freigabe eines Hintergrund-Agenten ist erledigt, sobald er danach weiterschreibt', () => {
+  // AgentenUebersicht 27.10.2026: der Agent bat um Navigate, du hast
+  // zugestimmt, er arbeitete weiter -- die Kachel blieb rot, weil das
+  // Haupt-Transkript seit dem Turn-Ende schwieg.
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Stop' });
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission to use Navigate', notification_type: 'permission_prompt' });
+  const anfrage = store.hookState.get('s1').since;
+  const ende = { ...turnDone, timestamp: new Date(anfrage - 5 * MINUTE).toISOString() };
+  const t = tail({ lastTurn: ende, mtime: new Date(anfrage - 5 * MINUTE) });
+  const agent = { id: 'ae2679d5b64f39cce', art: 'agent', start: anfrage - 20 * MINUTE, beschreibung: 'Frontend' };
+
+  // Noch nicht entschieden: der Agent schweigt seit seinem Aufruf -- rot.
+  let [s] = store.update([sess({ hintergrundBefehle: [agent], subagenten: [{ mtime: anfrage - 7000, offen: true }], tail: t })]);
+  assert.equal(s.status, 'attention');
+
+  // Entschieden: der Agent schreibt das Ergebnis und macht weiter -- gelb.
+  [s] = store.update([sess({ hintergrundBefehle: [agent], subagentMtime: Date.now() + 2000, subagenten: [{ mtime: anfrage + 2000, offen: true }], tail: t })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.color, 'yellow');
+  assert.equal(s.note, 'Hintergrund-Agenten');
+
+  // Der Agent ist fertig: Turn zu Ende, nichts laeuft mehr -- gruen.
+  [s] = store.update([sess({ hintergrundBefehle: [], subagenten: [{ mtime: anfrage + 2000, offen: false }], tail: t })]);
+  assert.equal(s.status, 'done');
+});
+
+test('die Freigabe bleibt rot, solange ein Agent seit vor der Anfrage wartet -- auch wenn ein anderer schreibt', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' });
+  const anfrage = store.hookState.get('s1').since;
+  const ende = { ...turnDone, timestamp: new Date(anfrage - MINUTE).toISOString() };
+  const agenten = [
+    { mtime: anfrage - 5000, offen: true },
+    { mtime: anfrage + 3000, offen: false },
+  ];
+  const [s] = store.update([sess({ subagentMtime: anfrage + 3000, subagenten: agenten, tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'attention');
+});
+
+test('wartet der Haupt-Chat selbst auf ein Werkzeug, erledigt ein schreibender Subagent die Freigabe nicht', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' });
+  const anfrage = store.hookState.get('s1').since;
+  const aufruf = { ...turnTool, timestamp: new Date(anfrage - 3000).toISOString() };
+  const [s] = store.update([
+    sess({ subagentMtime: anfrage + 3000, subagenten: [{ mtime: anfrage + 3000, offen: false }], tail: tail({ lastTurn: aufruf, offenerAufruf: true }) }),
+  ]);
+  assert.equal(s.status, 'attention');
+});
+
+test('die Freigabe eines Vordergrund-Agenten ist erledigt, sobald er weiterschreibt', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission to use Write', notification_type: 'permission_prompt' });
+  const anfrage = store.hookState.get('s1').since;
+  const agentAufruf = { ...turnTool, toolName: 'Agent', timestamp: new Date(anfrage - 2 * MINUTE).toISOString() };
+  const [s] = store.update([
+    sess({ subagentMtime: anfrage + 3000, subagenten: [{ mtime: anfrage + 3000, offen: true }], tail: tail({ lastTurn: agentAufruf, offenerAufruf: true }) }),
+  ]);
+  assert.equal(s.status, 'running');
+});
+
+test('eine Leerlauf-Meldung wird von einem schreibenden Subagenten nicht erledigt', () => {
+  const store = new StateStore(CFG);
+  store.handleHook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude is waiting for your input', notification_type: 'idle_prompt' });
+  const anfrage = store.hookState.get('s1').since;
+  const ende = { ...turnDone, timestamp: new Date(anfrage - MINUTE).toISOString() };
+  // Gelb ja (Agent laeuft), aber als "wartet auf dich", nicht als erledigt.
+  const [s] = store.update([sess({ subagentMtime: Date.now() - 2000, subagenten: [{ mtime: anfrage + 2000, offen: false }], tail: tail({ lastTurn: ende }) })]);
+  assert.equal(s.status, 'running');
+  assert.equal(s.note, 'wartet auf dich · Hintergrund-Agenten laufen');
+});
+
 test('Leerlauf-Meldung ohne notification_type wird am Text erkannt', async () => {
   const { istLeerlauf } = await import('../lib/state.js');
   assert.equal(istLeerlauf({ message: 'Claude is waiting for your input' }), true);
