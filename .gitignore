@@ -11,3 +11,6 @@ overlay/geschlossen
 logs/
 # Ausgabe von /brag (Video, Einzelbilder).
 brag-output/
+# Gemerkte Prozessbaeume der Sessions (Aufraeumen).
+prozessbaum.json
+prozessbaum.json.tmp

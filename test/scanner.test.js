@@ -772,3 +772,24 @@ test('scan haelt einen Hintergrund-Agenten offen, bis seine Abschlussmeldung kom
   [s] = scan({ claudeDir: root, livePids: new Set([112]) });
   assert.deepEqual(s.hintergrundBefehle, []);
 });
+
+test('scan blendet SDK-Sessions ohne Fenster aus (Agenten-Uebersicht, claude -p)', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 32112, sessionId: 's-sdk', cwd: 'c:\\Projekte\\AgentenÜbersicht', entrypoint: 'sdk-ts', startedAt: 1 });
+  writeSession(root, { pid: 7001, sessionId: 's-p', cwd: 'c:\\A', entrypoint: 'sdk-cli', startedAt: 1 });
+  writeSession(root, { pid: 7002, sessionId: 's-mensch', cwd: 'c:\\B', entrypoint: 'claude-vscode', startedAt: 1 });
+  const sessions = scan({ claudeDir: root, livePids: new Set([32112, 7001, 7002]) });
+  assert.deepEqual(sessions.map((s) => s.sessionId), ['s-mensch']);
+});
+
+test('scan verwirft eine Registry-Leiche, deren PID ein anderer Prozess hat', () => {
+  const root = makeFixture();
+  writeSession(root, { pid: 8001, sessionId: 's-leiche', cwd: 'c:\\A', entrypoint: 'cli', startedAt: 1, procStart: '134376486577563131' });
+  writeSession(root, { pid: 8002, sessionId: 's-echt', cwd: 'c:\\B', entrypoint: 'cli', startedAt: 1, procStart: '134378266776489251' });
+  const zeiten = new Map([
+    [8001, '134378270000000000'], // PID neu vergeben: spaeter gestartet
+    [8002, '134378266776489251'],
+  ]);
+  const sessions = scan({ claudeDir: root, livePids: new Set([8001, 8002]), zeiten });
+  assert.deepEqual(sessions.map((s) => s.sessionId), ['s-echt']);
+});

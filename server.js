@@ -11,11 +11,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exec, spawn } from 'node:child_process';
 
-import { scan, cacheStand } from './lib/scanner.js';
+import { scan, cacheStand, pidLebt } from './lib/scanner.js';
 import { StateStore } from './lib/state.js';
 import { listPorts, portsForCwd, unmatchedPorts } from './lib/ports.js';
-import { listWindows, assignWindows, focusWindow, focusConsole, focusViaCode, isAmbiguous } from './lib/windows.js';
-import { vorwaermen } from './lib/shell.js';
+import { listWindows, assignWindows, focusWindow, focusConsole, isAmbiguous } from './lib/windows.js';
+import { vorwaermen, runPowerShell } from './lib/shell.js';
+import { Aufraeumer, STANDARD_AUSNAHMEN } from './lib/aufraeumen.js';
 import { groupByProject, istAgentSession, nurGelb, ohneGelb } from './lib/grouping.js';
 import { nutzung } from './lib/usage.js';
 import { loadOrCreateSecrets, tokenGleich } from './lib/secrets.js';
@@ -211,6 +212,38 @@ let letzteFenster = [];
 const neueMessung = () => ({ takte: 0, scanMs: 0, scanMax: 0, verzugMax: 0, gesendet: 0, bytes: 0, hooks: 0 });
 let messung = neueMessung();
 
+// --- Aufraeumen hinter beendeten Sessions -----------------------------------
+// Merkt sich je Session ihren Prozessbaum und beendet nach dem Ende der
+// Session, was sie gestartet hat. Details und Ausnahmen in lib/aufraeumen.js.
+// Ausschalten: "aufraeumen": false in config.json.
+const aufraeumer = new Aufraeumer({
+  datei: path.join(HERE, 'prozessbaum.json'),
+  logDatei: path.join(HERE, 'logs', 'aufraeumen.log'),
+  ausnahmen: [...STANDARD_AUSNAHMEN, ...(Array.isArray(CONFIG.aufraeumenAusnahmen) ? CONFIG.aufraeumenAusnahmen : [])],
+  waisenBeenden: CONFIG.waisenBeenden === true,
+});
+// Die Prozessliste (WMI) kostet rund eine Sekunde -- nicht bei jedem Takt.
+const AUFRAEUMEN_ALLE_MS = 30000;
+let aufraeumenAt = 0;
+let aufraeumenLaeuft = false;
+
+async function aufraeumenTakt(sessions) {
+  if (CONFIG.aufraeumen === false || aufraeumenLaeuft || Date.now() - aufraeumenAt < AUFRAEUMEN_ALLE_MS) return;
+  aufraeumenLaeuft = true;
+  aufraeumenAt = Date.now();
+  try {
+    const prozesse = await runPowerShell('prozesse.ps1', [], { timeout: 20000 });
+    // Agenten-Sessions (Relaunch-Agent) nicht verfolgen -- ihre Baeume bleiben trotzdem tabu.
+    const verfolgen = sessions.filter((s) => !istAgentSession(s.cwd, CONFIG.agentOrdner));
+    const beendet = await aufraeumer.takt(prozesse, { lebend: sessions, verfolgen });
+    if (beendet.length) console.log(`Aufraeumen: ${beendet.length} Prozess(e) beendet (${beendet.map((b) => `${b.pid} ${b.name}`).join(', ')})`);
+  } catch (err) {
+    console.error('Aufraeumen fehlgeschlagen:', err?.message ?? err);
+  } finally {
+    aufraeumenLaeuft = false;
+  }
+}
+
 async function taktLauf() {
   let sessions;
   const beginn = performance.now();
@@ -227,6 +260,9 @@ async function taktLauf() {
   if (scanMs > messung.scanMax) messung.scanMax = scanMs;
 
   const rows = store.update(sessions);
+
+  // Hintergrundprozesse beendeter Sessions beenden -- eigener, langsamer Takt.
+  aufraeumenTakt(sessions);
 
   // Ports, Fenster und Nutzungslimit sind langsamer (PowerShell bzw. Netz)
   // und deshalb jeweils zwischengespeichert. Ports und Fenster sieht nur, wer
@@ -527,10 +563,21 @@ const server = http.createServer(async (req, res) => {
     } catch {
       /* unten als Fehler behandelt */
     }
-    const row = snapshot.sessions.find((s) => s.sessionId === sessionId);
+    // Gelbe Sessions stehen seit 20.10.2026 nicht mehr in der Hauptliste,
+    // sondern in snapshot.gelb -- anklickbar sind sie trotzdem.
+    const row = [...snapshot.sessions, ...(snapshot.gelb?.sessions ?? [])].find((s) => s.sessionId === sessionId);
     if (!row) {
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'Session unbekannt' }));
+      return;
+    }
+    // Der Schnappschuss kann einen Takt alt sein: ist der Prozess inzwischen
+    // weg, nichts anfassen -- die PID koennte schon einem fremden Fenster
+    // gehoeren. Neuer Takt, damit der Eintrag sofort verschwindet.
+    if (!pidLebt(row.pid)) {
+      setImmediate(tick);
+      res.writeHead(410, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Session beendet' }));
       return;
     }
 
@@ -556,22 +603,21 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Erst das genau zugeordnete Fenster. Gibt es keins, ist es vielleicht eine
-    // Session im Terminal -- deren Fenster haengt an der Konsole. Sonst
-    // uebernimmt die VS-Code-Kommandozeile und holt das Fenster mit diesem
-    // Ordner nach vorn.
+    // Session im Terminal -- deren Fenster haengt an der Konsole.
+    //
+    // Kein Rueckfall mehr auf `code --reuse-window <ordner>` (30.10.2026): ist
+    // der Ordner in keinem Fenster offen, ersetzt VS Code damit den Ordner im
+    // zuletzt aktiven Fenster und beendet die echte Session, die dort laeuft.
+    // Ohne eindeutiges Fenster passiert jetzt lieber gar nichts.
     let ok = row.hwnd ? await focusWindow(row.hwnd) : false;
     let weg = ok ? 'fenster' : null;
     if (!ok && !row.hwnd) {
       ok = (await focusConsole(row.pid))?.ok === true;
       weg = ok ? 'konsole' : null;
     }
-    if (!ok) {
-      ok = await focusViaCode(row.cwd);
-      weg = ok ? 'code' : null;
-    }
 
-    res.writeHead(ok ? 200 : 500, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok, weg }));
+    res.writeHead(ok ? 200 : 409, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(ok ? { ok, weg } : { ok, error: 'kein eindeutiges Fenster' }));
     return;
   }
 
