@@ -21,6 +21,7 @@ import { groupByProject, istAgentSession, nurGelb, ohneGelb } from './lib/groupi
 import { nutzung } from './lib/usage.js';
 import { loadOrCreateSecrets, tokenGleich } from './lib/secrets.js';
 import { PushDienst } from './lib/push.js';
+import { fokusDesktop } from './lib/desktop.js';
 import { overlaySucher } from './lib/overlay.js';
 import { overlaySchliessenMerken, overlayFreigeben } from './lib/overlay-aus.cjs';
 import { CODE_PORT_BELEGT } from './lib/watchdog-regel.js';
@@ -578,6 +579,14 @@ const server = http.createServer(async (req, res) => {
       setImmediate(tick);
       res.writeHead(410, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'Session beendet' }));
+      return;
+    }
+
+    // Claude-Desktop-Sitzung: direkt in der App oeffnen (Link, kein Fenster-Raten).
+    if (row.art === 'desktop') {
+      const antwort = await fokusDesktop(row);
+      res.writeHead(antwort.status, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(antwort.body));
       return;
     }
 
