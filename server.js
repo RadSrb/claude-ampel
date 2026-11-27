@@ -14,7 +14,7 @@ import { exec, spawn } from 'node:child_process';
 import { scan, cacheStand, pidLebt } from './lib/scanner.js';
 import { StateStore } from './lib/state.js';
 import { listPorts, portsForCwd, unmatchedPorts } from './lib/ports.js';
-import { listWindows, assignWindows, focusWindow, focusConsole, isAmbiguous } from './lib/windows.js';
+import { listWindows, assignWindows, focusWindow, focusConsole, isAmbiguous, countFolderWindows } from './lib/windows.js';
 import { vorwaermen, runPowerShell } from './lib/shell.js';
 import { Aufraeumer, STANDARD_AUSNAHMEN } from './lib/aufraeumen.js';
 import { groupByProject, istAgentSession, nurGelb, ohneGelb } from './lib/grouping.js';
@@ -207,6 +207,13 @@ let lastPayload = '';
 // Letzter Stand von Ports und Fenstern -- bleibt stehen, solange niemand zuschaut.
 let letztePorts = [];
 let letzteFenster = [];
+// Eine Zeile pro fehlgeschlagenem Fokus ins Server-Log (stdout, vom Watchdog
+// nach logs/server.log geschrieben). Keine Chat-Inhalte, keine Tokens.
+function fokusLog(row, grund) {
+  const ordner = row.cwd ? path.basename(String(row.cwd)) : null;
+  console.log(`Fokus fehlgeschlagen: session=${row.sessionId} art=${row.art ?? '?'} ordner=${ordner ?? '?'} hwnd=${row.hwnd ?? null} grund="${grund}" kandidaten=${countFolderWindows(letzteFenster, ordner)}`);
+}
+const gemerkteFenster = new Map(); // sessionId -> hwnd, siehe assignWindows
 
 // Selbstmessung: nur Zaehler, die ohnehin anfallen -- kein eigener Zeitgeber,
 // keine Dateizugriffe. Unten wird daraus alle zehn Minuten eine Logzeile.
@@ -282,7 +289,7 @@ async function taktLauf() {
   // lebt -- der Scanner liefert ohnehin nur lebende Prozesse.
   const sichtbar = rows;
 
-  const fenster = assignWindows(sichtbar, windows);
+  const fenster = assignWindows(sichtbar, windows, gemerkteFenster);
   for (const row of sichtbar) {
     row.ports = portsForCwd(ports, row.cwd);
     const win = fenster.get(row.sessionId) ?? null;
@@ -606,6 +613,7 @@ const server = http.createServer(async (req, res) => {
         ok = await focusWindow(row.hwnd, { taste: false });
         weg = ok ? 'fenster' : null;
       }
+      if (!ok) fokusLog(row, row.hwnd ? 'focusWindow/focusConsole fehlgeschlagen' : 'focusConsole fehlgeschlagen, keine Zuordnung');
       res.writeHead(ok ? 200 : 500, { 'content-type': 'application/json' });
       res.end(JSON.stringify(ok ? { ok, weg } : { ok, error: 'Terminalfenster nicht gefunden' }));
       return;
@@ -625,6 +633,7 @@ const server = http.createServer(async (req, res) => {
       weg = ok ? 'konsole' : null;
     }
 
+    if (!ok) fokusLog(row, row.hwnd ? 'focusWindow fehlgeschlagen' : 'keine Zuordnung');
     res.writeHead(ok ? 200 : 409, { 'content-type': 'application/json' });
     res.end(JSON.stringify(ok ? { ok, weg } : { ok, error: 'kein eindeutiges Fenster' }));
     return;

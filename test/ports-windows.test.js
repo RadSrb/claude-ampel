@@ -177,3 +177,56 @@ test('isAmbiguous erkennt mehrere Fenster im selben Ordner', () => {
   assert.equal(isAmbiguous(FENSTER, { folder: 'Multi-Tenant-Voice-Platform' }), true);
   assert.equal(isAmbiguous(FENSTER, { folder: 'WorkExpert' }), false);
 });
+
+// Zuordnung merken: Titeltreffer bleibt bestehen, auch wenn das Fenster danach einen Dateinamen zeigt.
+const A = { hwnd: 3, pid: 1, app: 'Code', title: 'Selbst anrufen und testen - Multi-Tenant-Voice-Platform - Visual Studio Code' };
+const A_DATEI = { hwnd: 3, pid: 1, app: 'Code', title: 'index.js - Multi-Tenant-Voice-Platform - Visual Studio Code' };
+const B = { hwnd: 5, pid: 1, app: 'Code', title: 'index.js - Multi-Tenant-Voice-Platform - Visual Studio Code' };
+const ROWS = [
+  { sessionId: 'a', title: 'Selbst anrufen und testen', folder: 'Multi-Tenant-Voice-Platform' },
+  { sessionId: 'b', title: 'Anderer Titel', folder: 'Multi-Tenant-Voice-Platform' },
+];
+
+test('assignWindows merkt sich den Titeltreffer und behaelt das Fenster bei Dateinamen-Titel', () => {
+  const gemerkt = new Map();
+  assert.equal(assignWindows(ROWS, [A, B], gemerkt).get('a').hwnd, 3);
+  const z = assignWindows(ROWS, [A_DATEI, B], gemerkt);
+  assert.equal(z.get('a').hwnd, 3);
+  assert.equal(z.get('b').hwnd, 5);
+});
+
+test('assignWindows: geschlossenes Fenster loescht die Merkung', () => {
+  const gemerkt = new Map();
+  const B_TITEL = { ...B, title: 'Anderer Titel - Multi-Tenant-Voice-Platform - Visual Studio Code' };
+  assignWindows(ROWS, [A, B_TITEL], gemerkt);
+  const z = assignWindows(ROWS, [B], gemerkt);
+  assert.equal(gemerkt.has('a'), false);
+  assert.equal(gemerkt.get('b'), 5);
+  assert.equal(z.get('b').hwnd, 5);
+  assert.equal(z.get('a'), undefined);
+});
+
+test('assignWindows: frischer Titeltreffer einer anderen Session gewinnt gegen die Merkung', () => {
+  const gemerkt = new Map();
+  assignWindows(ROWS, [A, B], gemerkt);
+  const gewechselt = { ...A, title: 'Anderer Titel - Multi-Tenant-Voice-Platform - Visual Studio Code' };
+  const z = assignWindows(ROWS, [gewechselt, B], gemerkt);
+  assert.equal(z.get('b').hwnd, 3);
+  assert.equal(gemerkt.get('b'), 3);
+  assert.notEqual(gemerkt.get('a'), 3);
+});
+
+test('assignWindows: leere Fensterliste loescht keine Merkungen', () => {
+  const gemerkt = new Map();
+  assignWindows(ROWS, [A, B], gemerkt);
+  assert.equal(assignWindows(ROWS, [], gemerkt).size, 0);
+  assert.equal(gemerkt.get('a'), 3);
+  assert.equal(assignWindows(ROWS, [A_DATEI, B], gemerkt).get('a').hwnd, 3);
+});
+
+test('assignWindows: Merkung faellt weg, wenn die Session weg ist', () => {
+  const gemerkt = new Map();
+  assignWindows(ROWS, [A, B], gemerkt);
+  assignWindows([ROWS[1]], [A, B], gemerkt);
+  assert.equal(gemerkt.has('a'), false);
+});
